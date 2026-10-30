@@ -424,3 +424,29 @@ export function riskContributions(w, cov) {
   const total = dot(w, Sw);
   return w.map((wi, i) => (wi * Sw[i]) / total);
 }
+
+/* Max Sharpe with an optional volatility cap and return floor.
+   The answer lies on the efficient frontier (for any feasible portfolio, the frontier one with the
+   same volatility has more return, so a higher Sharpe), and Sharpe rises then falls along the
+   frontier. So: if the tangency portfolio meets both limits it's the answer; otherwise the answer
+   is the frontier point at the limit it breaks. `binding` says which limit decided it, and
+   `infeasible` explains when no portfolio meets both. */
+export function maxSharpeWithin(ctx, front, { maxVol = null, minRet = null } = {}) {
+  const best = maxSharpe(ctx, front);
+  if (maxVol == null && minRet == null) return { ...best, binding: null };
+  const first = front[0], last = front[front.length - 1];
+  if (maxVol != null && maxVol < first.vol - 1e-9) {
+    return { ...first, binding: null, infeasible: `the lowest volatility available is ${(first.vol * 100).toFixed(1)}%, above the ${(maxVol * 100).toFixed(1)}% cap` };
+  }
+  if (minRet != null && minRet > last.ret + 1e-9) {
+    return { ...last, binding: null, infeasible: `the highest return available is ${(last.ret * 100).toFixed(1)}%, below the ${(minRet * 100).toFixed(1)}% floor` };
+  }
+  const lowEnd = minRet != null ? frontierTarget(ctx, front, 'ret', minRet) : first;   // least risk meeting the floor
+  const highEnd = maxVol != null ? frontierTarget(ctx, front, 'vol', maxVol) : last;   // most return within the cap
+  if (lowEnd.vol > highEnd.vol + 1e-7) {
+    return { ...lowEnd, binding: null, infeasible: `reaching ${(minRet * 100).toFixed(1)}% return takes ${(lowEnd.vol * 100).toFixed(1)}% volatility, above the ${(maxVol * 100).toFixed(1)}% cap` };
+  }
+  if (best.ret < lowEnd.ret - 1e-9) return { ...lowEnd, binding: 'minRet' };
+  if (best.vol > highEnd.vol + 1e-9) return { ...highEnd, binding: 'maxVol' };
+  return { ...best, binding: null };
+}

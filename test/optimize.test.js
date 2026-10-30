@@ -206,3 +206,33 @@ test('impossible share-of-class limits are explained', () => {
   assert.match(O.boundsError([0, 0, 0], [1, 1, 1], g, rel({ lo: 0.5, hi: 0.4 }, { lo: 0, hi: 1 }), names), /US LV's minimum share of Equity is above its maximum/);
   assert.equal(O.boundsError([0, 0, 0], [1, 1, 1], g, rel({ lo: 0, hi: 0.3 }, { lo: 0, hi: 1 }), names), null);
 });
+
+// ------------------------------------------------- max Sharpe with a vol cap / return floor
+test('max Sharpe within limits matches a brute-force search along the frontier', () => {
+  const ctx = O.context(mu, cov, rf, open, full);
+  const f = O.frontier(ctx, 200);
+  const free = O.maxSharpe(ctx, f);
+  // no limits, or limits that don't bind: the tangency portfolio
+  near(O.maxSharpeWithin(ctx, f, {}).sharpe, free.sharpe, 1e-12);
+  assert.equal(O.maxSharpeWithin(ctx, f, { maxVol: free.vol + 0.05, minRet: free.ret - 0.01 }).binding, null);
+  const capBelow = (f[0].vol + free.vol) / 2; // between min-vol and tangency volatility
+  for (const lim of [{ maxVol: capBelow }, { minRet: free.ret + 0.01 }, { maxVol: 0.2, minRet: 0.1 }]) {
+    const p = O.maxSharpeWithin(ctx, f, lim);
+    assert.ok(!p.infeasible);
+    if (lim.maxVol != null) assert.ok(p.vol <= lim.maxVol + 1e-6, `vol ${p.vol}`);
+    if (lim.minRet != null) assert.ok(p.ret >= lim.minRet - 1e-6, `ret ${p.ret}`);
+    // nothing on a dense frontier that meets the limits does better
+    const ok = f.filter((q) => (lim.maxVol == null || q.vol <= lim.maxVol) && (lim.minRet == null || q.ret >= lim.minRet));
+    for (const q of ok) assert.ok(q.sharpe <= p.sharpe + 1e-6);
+  }
+  assert.equal(O.maxSharpeWithin(ctx, f, { maxVol: capBelow }).binding, 'maxVol');
+  assert.equal(O.maxSharpeWithin(ctx, f, { minRet: free.ret + 0.01 }).binding, 'minRet');
+});
+
+test('impossible vol cap / return floor are explained', () => {
+  const ctx = O.context(mu, cov, rf, open, full);
+  const f = O.frontier(ctx);
+  assert.match(O.maxSharpeWithin(ctx, f, { maxVol: 0.01 }).infeasible, /lowest volatility available/);
+  assert.match(O.maxSharpeWithin(ctx, f, { minRet: 0.5 }).infeasible, /highest return available/);
+  assert.match(O.maxSharpeWithin(ctx, f, { maxVol: 0.16, minRet: 0.115 }).infeasible, /takes .* volatility, above the 16.0% cap/);
+});
