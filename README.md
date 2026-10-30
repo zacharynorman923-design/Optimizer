@@ -23,6 +23,12 @@ modules. Installable as a PWA, and it works offline once loaded.
   can't all be met are explained. *My own weights* ignores them but flags any class that's out
   of range.
   Presets: *All*, *US to 1926* (the five US style sleeves plus cash, 100 years of history) and *None*.
+- **Limits as a share of the class.** Each sleeve's min/max can be set as **% of the portfolio**
+  or **% of its own class**, from the selector under the sleeve's name. Examples: US Large
+  Value 10–30% *of equity*, 5-year Treasury at least 40% *of fixed income*, Commodities at most
+  50% *of alts*. The weight column then also shows the sleeve's current share of its class.
+  Conflicting shares are explained, for example minimum shares adding up to more than 100% of
+  the class.
 - **All the history there is.** The window defaults to the longest stretch every ticked sleeve
   covers. The app names the sleeves that set the start date and says how far back you'd get
   without them. *From* and *To* narrow the window.
@@ -68,6 +74,12 @@ Returns are monthly decimal total returns from `data/processed/optimizer_returns
   - Asset-class limits add one shift per class: `wᵢ = clip(vᵢ − τ − σ_g, loᵢ, hiᵢ)`, where `σ_g` is
     zero unless the class total would break its limit. The classes don't overlap, so each settles
     independently for a given `τ`, and the projection stays exact.
+  - A share-of-class limit (`loᵣ·Σ_g w ≤ wᵢ ≤ hiᵣ·Σ_g w`) ties a sleeve to its whole class, so the
+    shortcut projection above no longer applies on its own. With any of these limits on, the
+    optimizer switches to **ADMM** in the OSQP form (Stellato et al., 2020): every limit is a row
+    of `l ≤ Aw ≤ u`, one small matrix is factored once, and each solve takes a few milliseconds.
+    Dykstra's algorithm gives the exact nearest point where one is needed (equal weight), and the
+    max-return end comes from projecting a point far out along `μ`.
   - The max-return end is solved exactly: each class is brought up to its minimum with its best
     sleeves, then the rest goes to the best sleeves within the sleeve and class maximums.
 - **Max Sharpe:** the best Sharpe on the frontier, refined by golden-section search on `γ`.

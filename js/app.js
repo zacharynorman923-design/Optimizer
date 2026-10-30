@@ -27,7 +27,7 @@ let bundle, cov, sleeves, ids, defaultOn = {};
 // ticked unless you've changed it; some sleeves start unticked (see default_on in the data)
 const isOn = (id) => (id in state.include ? state.include[id] : defaultOn[id] !== false);
 let state = {
-  include: {}, lo: {}, hi: {}, custom: {}, classLo: {}, classHi: {}, objective: 'maxSharpe', target: null,
+  include: {}, lo: {}, hi: {}, custom: {}, classLo: {}, classHi: {}, limitOf: {}, objective: 'maxSharpe', target: null,
   start: 'earliest', end: 'latest', rebalance: 'annual', benchmark: 'US_LargeCap',
 };
 
@@ -81,11 +81,17 @@ $('classes').addEventListener('input', (e) => {
   update(250);
 });
 
+const relMode = (id) => state.limitOf[id] === 'class';
+const CLASS_SHORT = { Equity: 'Eq', 'Fixed income': 'FI', Alts: 'Alts' };
+
 function sleeveRow(s) {
   const on = isOn(s.sleeve);
   return `<div class="sleeve${on ? '' : ' off'}" data-id="${s.sleeve}">
     <input type="checkbox" ${on ? 'checked' : ''} aria-label="Include ${esc(s.name)}">
-    <div class="s-name">${esc(s.name)}<span class="s-meta">from ${ym(s.start_date)} · ${esc(s.morningstar_category)}</span></div>
+    <div class="s-name">${esc(s.name)}<span class="s-meta">from ${ym(s.start_date)} · ${esc(s.morningstar_category)}</span>
+      <label class="s-mode">% of <select class="mode" aria-label="Min and max are a percent of">
+        <option value="port"${relMode(s.sleeve) ? '' : ' selected'}>portfolio</option>
+        <option value="class"${relMode(s.sleeve) ? ' selected' : ''}>${esc({ Equity: 'equity', 'Fixed income': 'fixed inc.', Alts: 'alts' }[classOf(s)])}</option></select></label></div>
     <input class="num-in lo" type="number" inputmode="decimal" min="0" max="100" step="1" value="${bound(state.lo, s.sleeve, 0)}" aria-label="Minimum %" ${on ? '' : 'disabled'}>
     <input class="num-in hi" type="number" inputmode="decimal" min="0" max="100" step="1" value="${bound(state.hi, s.sleeve, 100)}" aria-label="Maximum %" ${on ? '' : 'disabled'}>
     <div class="s-w"></div>
@@ -95,6 +101,9 @@ function sleeveRow(s) {
 $('sleeves').addEventListener('change', (e) => {
   const row = e.target.closest('.sleeve'); if (!row) return;
   const id = row.dataset.id;
+  if (e.target.classList.contains('mode')) {
+    if (e.target.value === 'class') state.limitOf[id] = 'class'; else delete state.limitOf[id];
+  }
   if (e.target.type === 'checkbox') {
     state.include[id] = e.target.checked;
     row.classList.toggle('off', !e.target.checked);
@@ -197,21 +206,26 @@ function run() {
   renderHistory(win, s, inc);
   if (s.dates.length < 24) { status('Pick a window of at least two years.', 'err'); $('results').classList.add('hidden'); return; }
 
-  const lo = inc.map((id) => bound(state.lo, id, 0) / 100);
-  const hi = inc.map((id) => bound(state.hi, id, 100) / 100);
+  // limits in "% of portfolio" mode are sleeve bounds; in "% of class" mode they're shares of the class
+  const lo = inc.map((id) => (relMode(id) ? 0 : bound(state.lo, id, 0) / 100));
+  const hi = inc.map((id) => (relMode(id) ? 1 : bound(state.hi, id, 100) / 100));
   const groups = CLASSES.map((c) => ({
     name: c,
     members: inc.map((id, i) => [id, i]).filter(([id]) => classOf(sleeves.find((s) => s.sleeve === id)) === c).map(([, i]) => i),
     lo: bound(state.classLo, c, 0) / 100,
     hi: bound(state.classHi, c, 100) / 100,
   }));
-  const bad = O.boundsError(lo, hi, groups);
+  const rel = inc.map((id, i) => [id, i]).filter(([id]) => relMode(id)).map(([id, i]) => {
+    const g = groups.find((x) => x.members.includes(i));
+    return { i, group: g.name, members: g.members, lo: bound(state.lo, id, 0) / 100, hi: bound(state.hi, id, 100) / 100 };
+  });
+  const bad = O.boundsError(lo, hi, groups, rel, inc.map((id) => SHORT[id] || id));
   if (bad && state.objective !== 'custom') {
     status(`These limits can't all be met: ${bad}.`, 'err'); $('results').classList.add('hidden'); return;
   }
 
   const mo = O.moments(s.matrix, s.rf);
-  const ctx = O.context(mo.mu, mo.cov, mo.rf, bad ? inc.map(() => 0) : lo, bad ? inc.map(() => 1) : hi, bad ? [] : groups);
+  const ctx = O.context(mo.mu, mo.cov, mo.rf, bad ? inc.map(() => 0) : lo, bad ? inc.map(() => 1) : hi, bad ? [] : groups, bad ? [] : rel);
   const front = O.frontier(ctx);
   const sharpeP = O.maxSharpe(ctx, front);
   const minP = front[0];
@@ -234,7 +248,7 @@ function run() {
       if (chosen.clamped === 'high') msg = `No portfolio within these limits reaches ${state.target}% ${what}. Showing the highest available: ${pct(chosen[metric])}.`;
       break;
     }
-    case 'equal': chosen = evalW(O.project(inc.map(() => 1 / inc.length), lo, hi, groups)); break;
+    case 'equal': chosen = evalW(O.projectAll(inc.map(() => 1 / inc.length), lo, hi, groups, O.relativeHalfspaces(rel, inc.length))); break;
     case 'custom': {
       const raw = inc.map((id) => bound(state.custom, id, 0));
       const tot = raw.reduce((a, b) => a + b, 0);
@@ -315,8 +329,14 @@ function renderWeights(inc, chosen, ctx) {
       const inp = cell.querySelector('input');
       inp.disabled = i < 0;
       if (document.activeElement !== inp) inp.value = Number.isFinite(state.custom[row.dataset.id]) ? state.custom[row.dataset.id] : '';
+    } else if (i < 0) {
+      cell.textContent = '';
+    } else if (relMode(row.dataset.id)) {
+      const c = classOf(sleeves.find((x) => x.sleeve === row.dataset.id));
+      const tot = inc.reduce((a, id, j) => a + (classOf(sleeves.find((x) => x.sleeve === id)) === c ? chosen.w[j] : 0), 0);
+      cell.innerHTML = `${pct(chosen.w[i], 0)}<small>${tot > 1e-9 ? pct(chosen.w[i] / tot, 0) : '—'} of ${CLASS_SHORT[c]}</small>`;
     } else {
-      cell.textContent = i < 0 ? '' : pct(chosen.w[i], 0);
+      cell.textContent = pct(chosen.w[i], 0);
     }
   });
 }

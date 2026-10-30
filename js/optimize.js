@@ -15,6 +15,14 @@
    (then it puts the total on that limit), and τ found by bisection so the
    weights sum to 1. Because the classes don't overlap, each one can be
    settled independently for a given τ.
+
+   Limits relative to a class ("Large Value ≤ 30% of Equity") are linear but
+   couple a sleeve to its whole class:  lo_r·Σ_g w ≤ w_i ≤ hi_r·Σ_g w. Each is a
+   halfspace a·w ≤ 0 through the origin. With any of those present the solver
+   switches to ADMM in the OSQP form (Stellato et al. 2020): every limit becomes
+   a row of l ≤ Aw ≤ u, one small matrix is factored once, and each iteration is
+   a couple of multiplications. projectAll (Dykstra's algorithm) gives the exact
+   nearest point when one is needed on its own (e.g. equal weight).
    ========================================================================= */
 
 import { mean } from './stats.js';
@@ -44,7 +52,7 @@ export function moments(matrix, rf) {
 }
 
 /* Why the limits can't be met, or null if they can. */
-export function boundsError(lo, hi, groups = []) {
+export function boundsError(lo, hi, groups = [], rel = [], names = []) {
   for (let i = 0; i < lo.length; i++) {
     if (lo[i] > hi[i] + 1e-12) return `a minimum is above its maximum (${(lo[i] * 100).toFixed(0)}% > ${(hi[i] * 100).toFixed(0)}%)`;
   }
@@ -62,6 +70,26 @@ export function boundsError(lo, hi, groups = []) {
   const [mins, maxs] = effectiveTotals(lo, hi, groups);
   if (mins > 1 + 1e-9) return `with the asset-class limits, the minimums add up to ${pct(mins)}, over 100%`;
   if (maxs < 1 - 1e-9) return `with the asset-class limits, the most that can be invested is ${pct(maxs)}, under 100%`;
+  if (!rel.length) return null;
+  const nm = (i) => names[i] || `sleeve ${i + 1}`;
+  for (const r of rel) {
+    if (r.lo > r.hi + 1e-12) return `${nm(r.i)}'s minimum share of ${r.group} is above its maximum (${pct(r.lo)} > ${pct(r.hi)})`;
+  }
+  const byGroup = {};
+  rel.forEach((r) => { (byGroup[r.group] = byGroup[r.group] || []).push(r); });
+  for (const [g, rs] of Object.entries(byGroup)) {
+    const sLo = rs.reduce((a, r) => a + r.lo, 0);
+    if (sLo > 1 + 1e-9) return `the minimum shares of ${g} add up to ${pct(sLo)}, over 100% of ${g}`;
+    if (rs.length === rs[0].members.length) {
+      const sHi = rs.reduce((a, r) => a + r.hi, 0);
+      if (sHi < 1 - 1e-9) return `the maximum shares of ${g} add up to ${pct(sHi)}, so ${g} can't be filled`;
+    }
+  }
+  // anything else: try to find a portfolio that meets every limit
+  const halves = relativeHalfspaces(rel, lo.length);
+  const w = projectAll(lo.map(() => 1 / lo.length), lo, hi, groups, halves);
+  const worst = Math.max(0, ...halves.map((h) => dot(h.a, w)));
+  if (worst > 1e-6) return 'the share-of-class limits conflict with the other limits';
   return null;
 }
 
@@ -132,6 +160,116 @@ export function project(v, lo, hi, groups = []) {
   return w;
 }
 
+/* Halfspaces a·w ≤ 0 for limits relative to a class.
+   rel: [{ i, members: [indices in the class, including i], lo, hi }] with lo/hi as shares of the class. */
+export function relativeHalfspaces(rel, n) {
+  const out = [];
+  for (const r of rel) {
+    if (r.hi < 1 - 1e-12) {           // w_i − hi·Σ_g w ≤ 0
+      const a = new Array(n).fill(0);
+      r.members.forEach((j) => { a[j] -= r.hi; });
+      a[r.i] += 1;
+      out.push({ a, aa: dot(a, a) });
+    }
+    if (r.lo > 1e-12) {               // lo·Σ_g w − w_i ≤ 0
+      const a = new Array(n).fill(0);
+      r.members.forEach((j) => { a[j] += r.lo; });
+      a[r.i] -= 1;
+      out.push({ a, aa: dot(a, a) });
+    }
+  }
+  return out;
+}
+
+/* Nearest point to v satisfying the sleeve, class and relative limits (Dykstra's algorithm). */
+export function projectAll(v, lo, hi, groups = [], halves = [], maxIter = 20000) {
+  if (!halves.length) return project(v, lo, hi, groups);
+  const n = v.length;
+  let x = v.slice(), p = new Array(n).fill(0), y = x;
+  const q = halves.map(() => new Array(n).fill(0));
+  for (let it = 0; it < maxIter; it++) {
+    y = project(x.map((xi, i) => xi + p[i]), lo, hi, groups);
+    p = x.map((xi, i) => xi + p[i] - y[i]);
+    if (it === 0 && halves.every((h) => dot(h.a, y) <= 1e-12)) return y; // nothing relative binds
+    x = y;
+    halves.forEach((h, k) => {
+      const z = x.map((xi, i) => xi + q[k][i]);
+      const d = dot(h.a, z);
+      const xk = d > 0 ? z.map((zi, i) => zi - (d / h.aa) * h.a[i]) : z;
+      q[k] = z.map((zi, i) => zi - xk[i]);
+      x = xk;
+    });
+    let gap = 0;
+    for (let i = 0; i < n; i++) gap = Math.max(gap, Math.abs(x[i] - y[i]));
+    if (gap < 1e-12) break;
+  }
+  return y; // exactly within the sleeve/class limits; relative limits met to within ~1e-12
+}
+
+
+/* ---------------------------------------------------------------- ADMM (OSQP form)
+   min ½wᵀPw + qᵀw  s.t.  l ≤ Aw ≤ u, with P = 2Σ. Used when relative limits are present. */
+const RHO = 0.1, SIGMA = 1e-6, ALPHA = 1.6, BIG = 1e20;
+
+function cholesky(M) {
+  const n = M.length, L = M.map(() => new Array(n).fill(0));
+  for (let i = 0; i < n; i++) {
+    for (let j = 0; j <= i; j++) {
+      let s = M[i][j];
+      for (let k = 0; k < j; k++) s -= L[i][k] * L[j][k];
+      L[i][j] = i === j ? Math.sqrt(Math.max(s, 1e-300)) : s / L[j][j];
+    }
+  }
+  return L;
+}
+function cholSolve(L, b) {
+  const n = b.length, y = new Array(n);
+  for (let i = 0; i < n; i++) { let s = b[i]; for (let k = 0; k < i; k++) s -= L[i][k] * y[k]; y[i] = s / L[i][i]; }
+  for (let i = n - 1; i >= 0; i--) { let s = y[i]; for (let k = i + 1; k < n; k++) s -= L[k][i] * y[k]; y[i] = s / L[i][i]; }
+  return y;
+}
+
+function buildQP(cov, lo, hi, groups, halves) {
+  const n = lo.length, A = [], l = [], u = [], R = [];
+  const row = (a, lb, ub, r) => { A.push(a); l.push(lb); u.push(ub); R.push(r); };
+  row(new Array(n).fill(1), 1, 1, RHO * 1e3);                       // fully invested (equality)
+  for (let i = 0; i < n; i++) { const a = new Array(n).fill(0); a[i] = 1; row(a, lo[i], hi[i], RHO); }
+  for (const g of groups) { const a = new Array(n).fill(0); g.members.forEach((i) => { a[i] = 1; }); row(a, g.lo, g.hi, RHO); }
+  for (const h of halves) row(h.a, -BIG, 0, RHO);
+  const P = cov.map((r) => r.map((x) => 2 * x));
+  const M = P.map((r, i) => r.map((x, j) => x + (i === j ? SIGMA : 0) + A.reduce((s, a, k) => s + R[k] * a[i] * a[j], 0)));
+  return { A, l, u, R, P, L: cholesky(M), n, m: A.length };
+}
+
+function admm(qp, q, warm) {
+  const { A, l, u, R, P, L, n, m } = qp;
+  let x = warm && warm.x ? warm.x.slice() : new Array(n).fill(1 / n);
+  let z = A.map((a) => dot(a, x)).map((v, j) => Math.min(u[j], Math.max(l[j], v)));
+  let y = warm && warm.y ? warm.y.slice() : new Array(m).fill(0);
+  const qn = Math.max(1, ...q.map(Math.abs));
+  for (let it = 0; it < 50000; it++) {
+    const rhs = x.map((xi, i) => SIGMA * xi - q[i]);
+    for (let j = 0; j < m; j++) { const c = R[j] * z[j] - y[j]; if (c) for (let i = 0; i < n; i++) rhs[i] += A[j][i] * c; }
+    const xt = cholSolve(L, rhs);
+    for (let j = 0; j < m; j++) {
+      const zr = ALPHA * dot(A[j], xt) + (1 - ALPHA) * z[j];
+      const zn = Math.min(u[j], Math.max(l[j], zr + y[j] / R[j]));
+      y[j] += R[j] * (zr - zn);
+      z[j] = zn;
+    }
+    for (let i = 0; i < n; i++) x[i] = ALPHA * xt[i] + (1 - ALPHA) * x[i];
+    if (it % 10 === 9) {
+      let prim = 0, dual = 0;
+      for (let j = 0; j < m; j++) prim = Math.max(prim, Math.abs(dot(A[j], x) - z[j]));
+      const g = P.map((r, i) => dot(r, x) + q[i]);
+      for (let j = 0; j < m; j++) if (y[j]) for (let i = 0; i < n; i++) g[i] += A[j][i] * y[j];
+      for (const gi of g) dual = Math.max(dual, Math.abs(gi));
+      if (prim < 1e-11 && dual < 1e-9 * qn) break;
+    }
+  }
+  return { x, y };
+}
+
 /* Largest eigenvalue of a symmetric PSD matrix (power iteration). */
 function maxEigen(M) {
   let v = M.map(() => 1), lambda = 0;
@@ -147,11 +285,16 @@ function maxEigen(M) {
 /* min wᵀΣw − γ·μ·w over the feasible set (FISTA, warm-startable). */
 export function solve(ctx, gamma, warm) {
   const { mu, cov, lo, hi, step } = ctx;
-  let x = project(warm || mu.map(() => 1 / mu.length), lo, hi, ctx.groups);
+  if (ctx.qp) {
+    const r = admm(ctx.qp, mu.map((m) => -gamma * m), { x: warm, y: ctx.lastY });
+    ctx.lastY = r.y;
+    return r.x.map((v, i) => Math.min(hi[i], Math.max(lo[i], v))); // drop ±1e-12 solver noise
+  }
+  let x = projectAll(warm || mu.map(() => 1 / mu.length), lo, hi, ctx.groups, ctx.halves);
   let y = x.slice(), t = 1;
   for (let k = 0; k < 5000; k++) {
     const g = matVec(cov, y).map((gi, i) => 2 * gi - gamma * mu[i]);
-    const xNew = project(y.map((yi, i) => yi - step * g[i]), lo, hi, ctx.groups);
+    const xNew = projectAll(y.map((yi, i) => yi - step * g[i]), lo, hi, ctx.groups, ctx.halves);
     const tNew = (1 + Math.sqrt(1 + 4 * t * t)) / 2;
     let change = 0;
     y = xNew.map((xi, i) => { change = Math.max(change, Math.abs(xi - x[i])); return xi + ((t - 1) / tNew) * (xi - x[i]); });
@@ -187,11 +330,23 @@ export function maxReturn(mu, lo, hi, groups = []) {
   return w;
 }
 
+/* Highest-return portfolio under every limit. Without relative limits the greedy fill is exact.
+   With them, project a point far along μ: argmin ‖w − Kμ‖² = argmax μ·w (ties: smallest ‖w‖).
+   K is "far enough" once the answer stops changing (here 1,000× the largest μ); much farther
+   and Dykstra needs far more iterations to converge. */
+export function maxReturnAll(ctx) {
+  if (!ctx.halves.length) return maxReturn(ctx.mu, ctx.lo, ctx.hi, ctx.groups);
+  const K = 1e3 / (Math.max(...ctx.mu.map(Math.abs)) || 1);
+  return projectAll(ctx.mu.map((m) => m * K), ctx.lo, ctx.hi, ctx.groups, ctx.halves, 200000);
+}
+
 /* Everything the solvers share for one set of inputs. */
-export function context(mu, cov, rf, lo, hi, groups = []) {
+export function context(mu, cov, rf, lo, hi, groups = [], rel = []) {
   const L = 2 * maxEigen(cov) || 1;
   const scale = cov.reduce((s, row, i) => s + row[i], 0) / mu.length / (mean(mu.map(Math.abs)) || 1);
-  return { mu, cov, rf, lo, hi, groups, step: 1 / L, gMin: scale * 1e-4, gMax: scale * 1e4 };
+  const halves = relativeHalfspaces(rel, mu.length);
+  const qp = halves.length ? buildQP(cov, lo, hi, groups, halves) : null;
+  return { mu, cov, rf, lo, hi, groups, halves, qp, step: 1 / L, gMin: scale * 1e-4, gMax: scale * 1e4 };
 }
 
 const point = (ctx, w, gamma) => {
@@ -209,7 +364,7 @@ export function frontier(ctx, steps = 60) {
     warm = solve(ctx, gamma, warm);
     pts.push(point(ctx, warm, gamma));
   }
-  pts.push(point(ctx, maxReturn(ctx.mu, ctx.lo, ctx.hi, ctx.groups), Infinity));
+  pts.push(point(ctx, maxReturnAll(ctx), Infinity));
   // keep the efficient (rising-return) part, drop near-duplicates
   const out = [];
   for (const p of pts) {
