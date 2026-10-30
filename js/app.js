@@ -4,6 +4,8 @@
    ========================================================================= */
 
 import { loadBundle, coverage, commonWindow, slice, column, SHORT } from './data.js';
+
+const BENCH_IDS = ['BM_FI100', 'BM_20_80', 'BM_40_60', 'BM_60_40', 'BM_80_20', 'BM_EQ100', 'BM_World'];
 import * as S from './stats.js';
 import * as O from './optimize.js';
 import * as C from './charts.js';
@@ -184,7 +186,7 @@ function syncControls(win) {
 function run() {
   const inc = ids.filter(isOn);
   if (!inc.length) { $('history').innerHTML = ''; status('Tick at least one sleeve.', 'err'); $('results').classList.add('hidden'); syncControls({ start: cov.Cash.start, end: cov.Cash.end }); return; }
-  if (!ids.includes(state.benchmark)) state.benchmark = 'US_LargeCap';
+  if (!ids.includes(state.benchmark) && !(state.benchmark in cov)) state.benchmark = 'US_LargeCap';
 
   // the window every ticked sleeve, the benchmark and cash share
   const win = commonWindow(cov, [...new Set([...inc, state.benchmark, 'Cash'])]);
@@ -262,7 +264,8 @@ function run() {
   renderKpis(chosen, pm);
   const corr = S.correlation(s.matrix);
   redraw = () => {
-    renderFrontier(inc, mo, front, chosen, sharpeP, minP);
+    renderFrontier(inc, mo, front, chosen, sharpeP, minP, s.dates);
+    renderBenchmarks(s, portR, pm);
     renderBacktest(s, portR, benchR, pm, bm, years);
     renderYears(years);
     C.heatmap($('heatmap'), corr, inc.map((id) => SHORT[id] || id));
@@ -336,16 +339,29 @@ function renderKpis(chosen, pm) {
     + k('Sharpe', Number.isFinite(chosen.sharpe) ? chosen.sharpe.toFixed(2) : '—') + k('CAGR', pct(pm.cagr));
 }
 
-function renderFrontier(inc, mo, front, chosen, sharpeP, minP) {
+/* Annualized mean and volatility of a sleeve/benchmark over the window, or null if it has gaps there. */
+function point(id, dates) {
+  const r = column(bundle, id, dates);
+  if (r.some((v) => v === null || v === undefined)) return null;
+  return { ret: S.mean(r) * 12, vol: S.stdev(r) * Math.sqrt(12) };
+}
+
+function renderFrontier(inc, mo, front, chosen, sharpeP, minP, dates) {
   const bi = inc.indexOf(state.benchmark);
-  const benchPt = bi >= 0 ? { vol: Math.sqrt(mo.cov[bi][bi]), ret: mo.mu[bi] } : null;
+  const benchPt = point(state.benchmark, dates);
   const sleevePts = inc.map((id, i) => ({ label: SHORT[id] || id, vol: Math.sqrt(mo.cov[i][i]), ret: mo.mu[i] }))
     .filter((_, i) => i !== bi);
   const marks = [
     { ...minP, label: 'Min volatility', cls: 'mk-minvar' },
     { ...sharpeP, label: 'Max Sharpe', cls: 'mk-sharpe' },
   ];
-  if (benchPt) marks.push({ ...benchPt, label: `Benchmark: ${SHORT[state.benchmark]}`, cls: 'mk-bench' });
+  for (const id of BENCH_IDS) {
+    if (id === state.benchmark) continue;
+    const p = point(id, dates);
+    const same = p && benchPt && Math.abs(p.ret - benchPt.ret) < 1e-9 && Math.abs(p.vol - benchPt.vol) < 1e-9;
+    if (p && !same) marks.push({ ...p, label: bundle.benchmarks.list.find((b) => b.id === id).name, cls: 'mk-bm', text: SHORT[id] });
+  }
+  if (benchPt) marks.push({ ...benchPt, label: `Benchmark: ${benchName(state.benchmark)}`, cls: 'mk-bench', text: SHORT[state.benchmark] });
   marks.push({ ...chosen, label: `Selected: ${OBJECTIVES[state.objective]}`, cls: 'mk-sel' });
   C.frontierChart($('frontierChart'), front, sleevePts, marks);
 }
@@ -379,6 +395,32 @@ function renderBacktest(s, portR, benchR, pm, bm, years) {
   C.drawdownChart($('ddChart'), s.dates, S.drawdowns(pw), { dd: S.drawdowns(bw), color: 'var(--accent-2)', label: bl });
 }
 
+const benchName = (id) => (bundle.benchmarks.list.find((b) => b.id === id) || sleeves.find((x) => x.sleeve === id) || {}).name || id;
+
+function renderBenchmarks(s, portR, pm) {
+  $('bmTag').textContent = `${ym(s.dates[0])} → ${ym(s.dates.at(-1))}`;
+  const rows = [{ id: 'port', name: 'Your portfolio', m: pm }];
+  for (const id of BENCH_IDS) {
+    const r = column(bundle, id, s.dates);
+    const ok = r.every((v) => v !== null && v !== undefined);
+    rows.push({ id, name: benchName(id), m: ok ? S.metrics(r, s.rf) : null, r: ok ? r : null, from: cov[id].start });
+  }
+  const f2 = (v) => (Number.isFinite(v) ? v.toFixed(2) : '—');
+  $('btable').innerHTML = `<table><thead><tr><th></th><th>CAGR</th><th>Vol</th><th>Sharpe</th><th>Max DD</th><th>Worst 12M</th></tr></thead><tbody>`
+    + rows.map((x) => `<tr class="${x.id === 'port' ? 'port' : ''}${x.id === state.benchmark ? ' sel' : ''}"><td title="${esc(x.name)}">${esc(x.id === 'port' ? 'Yours' : SHORT[x.id])}</td>`
+      + (x.m ? `<td>${pct(x.m.cagr)}</td><td>${pct(x.m.vol)}</td><td>${f2(x.m.sharpe)}</td><td>${pct(x.m.maxDD)}</td><td>${pct(x.m.worst12)}</td>`
+        : `<td colspan="5" class="muted">starts ${ym(x.from)}, after this window begins</td>`) + '</tr>').join('')
+    + '</tbody></table>';
+
+  const cols = rows.filter((x) => x.id === 'port' || x.r);
+  const yrs = cols.map((x) => S.calendarYears(s.dates, x.id === 'port' ? portR : x.r));
+  $('bytable').innerHTML = `<table><thead><tr><th>Year</th>${cols.map((x) => `<th>${esc(x.id === 'port' ? 'Yours' : SHORT[x.id])}</th>`).join('')}</tr></thead><tbody>`
+    + yrs[0].slice().reverse().map((y, k) => {
+      const i = yrs[0].length - 1 - k;
+      return `<tr><td>${y.year}${y.partial ? ' YTD' : ''}</td>${yrs.map((c) => `<td>${pct(c[i].ret)}</td>`).join('')}</tr>`;
+    }).join('') + '</tbody></table>';
+}
+
 function renderYears(years) {
   const bl = SHORT[state.benchmark] || state.benchmark;
   const full = years.filter((y) => !y.partial);
@@ -407,7 +449,8 @@ function renderYears(years) {
   sleeves.forEach((s) => { defaultOn[s.sleeve] = s.default_on !== false; });
   const cut = [...new Set(Object.values(bundle.data_cut))].join(', ');
   $('dataLine').textContent = `Ken French Data Library · data cut ${cut} · built ${bundle.generated_at.slice(0, 10)}`;
-  $('benchSel').innerHTML = sleeves.map((s) => `<option value="${s.sleeve}">${esc(s.name)}</option>`).join('');
+  $('benchSel').innerHTML = `<optgroup label="Benchmarks">${bundle.benchmarks.list.map((b) => `<option value="${b.id}">${esc(b.name)}</option>`).join('')}</optgroup>`
+    + `<optgroup label="Sleeves">${sleeves.map((s) => `<option value="${s.sleeve}">${esc(s.name)}</option>`).join('')}</optgroup>`;
   renderSleeves();
   renderClasses();
   run();

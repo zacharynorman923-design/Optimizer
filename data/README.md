@@ -140,6 +140,24 @@ built from academic long/short factors:
   - **Equity_LS** ignores short-selling costs and momentum's high turnover.
   - Cap their weights, or read their results as an upper bound.
 
+**Benchmarks (for comparison only; the optimizer doesn't use them).**
+- **Blends:** built from the same data as the sleeves. *Stocks* = US_LargeCap (French's
+  all-US market, the usual stand-in for the S&P 500). *Bonds* = UST_5Y (about the same
+  interest-rate sensitivity as the Bloomberg US Aggregate, but Treasuries only).
+  - Rebalanced monthly, as published blended indexes are.
+  - **FI 100, 20/80, 40/60, 60/40, 80/20** start in 1962-02 (with the Treasuries).
+    **US 100** starts in 1926-07.
+- **World** (all-world equity, from 1990-07): the US market, DevExUS_Market and EM_Market,
+  weighted each month by each region's total market value from French's files.
+  - The US share goes from 33% (1990) to 49% (2000) to 56% (2026).
+  - French counts companies' full market value, not just freely traded shares. That
+    gives non-US markets a bit more weight than MSCI ACWI, where the US is about 64% today.
+- **Checked against real funds:**
+  - **60/40 vs Vanguard Balanced Index (VBINX), 1992–2026:** correlation 0.996, 8.3% vs
+    8.4% a year.
+  - **World vs Vanguard Total World (VT), 2008–2026:** correlation 0.993, 8.7% vs 8.8% a year.
+  - The comparison is in the `Benchmark_Checks` sheet.
+
 ## Outputs (`data/processed/`)
 
 | File | Contents |
@@ -150,6 +168,7 @@ built from academic long/short factors:
 | `optimizer_returns.json` | The three files above in one bundle for the React app (blank months are `null`) |
 | `commodities_splice.csv` | The commodity sleeve with AQR and HGER side by side and the source of each month |
 | `trend_splice.csv` | The Trend sleeve with the AQR factor and AQMIX side by side and the source of each month |
+| `benchmarks_monthly.csv` | The seven benchmarks' monthly returns |
 | `stats.xlsx` | One sheet per item, listed below |
 | `dfat_extended.csv`, `dfat_regression.csv`, `dfat_synthetic_vs_actual.png` | Only when DFAT returns are provided |
 
@@ -162,6 +181,7 @@ built from academic long/short factors:
 - **Annual_Check**: compounded monthly returns compared with French's own annual blocks. Differences should be rounding-sized (a few hundredths of a percent).
 - **Size_Lag_Check**: see the international market sleeves above.
 - **Commodities_Splice**: how closely HGER tracked AQR over the months both exist.
+- **Benchmarks_Full**, **Benchmarks_Calendar**, **Benchmark_Checks**: benchmark stats, calendar years, and the comparison with VBINX and VT.
 - **Trend_Splice**: how closely AQMIX tracked AQR's trend factor over the months both exist.
 
 Sharpe = annualized mean monthly excess return over RF ÷ annualized standard deviation of

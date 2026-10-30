@@ -44,6 +44,13 @@ modules. Installable as a PWA, and it works offline once loaded.
   - **Rebalancing:** annual, quarterly, monthly or never.
 - **Calendar years.** Portfolio minus benchmark for every year in the window, plus a
   year-by-year table. The current year shows as YTD.
+- **Benchmarks.** Seven built-in comparisons:
+  - **The blends:** all fixed income, 20/80, 40/60, 60/40, 80/20, all US stocks (≈ S&P 500).
+  - **All-world equity**, weighted by market value.
+
+  Pick any of them, or any sleeve, as the backtest benchmark. All seven are marked on the
+  frontier, and a panel compares your portfolio with every one over the same months, with
+  a calendar-year table.
 - **Correlations.** A heatmap of monthly-return correlations over the same window.
 
 Settings are remembered in your browser. Dark and light themes.

@@ -103,7 +103,8 @@
           <span><i class="lg-dot mk-sel"></i>Selected</span>
           <span><i class="lg-dot mk-sharpe"></i>Max Sharpe</span>
           <span><i class="lg-dot mk-minvar"></i>Min vol</span>
-          <span><i class="lg-dot mk-bench"></i>Benchmark</span>
+          <span><i class="lg-dot mk-bench"></i>Chosen benchmark</span>
+          <span><i class="lg-dot mk-bm"></i>Other benchmarks</span>
           <span><i class="lg-dot c-sleeve"></i>Sleeves</span>
         </div>
       </div>
@@ -128,6 +129,20 @@
       <details class="years">
         <summary>Year-by-year table</summary>
         <div class="ytable" id="ytable"></div>
+      </details>
+    </section>
+
+    <section class="panel" aria-labelledby="bmH">
+      <div class="panel-head"><h2 id="bmH">Benchmarks</h2><span class="tag" id="bmTag"></span></div>
+      <p class="note">Your portfolio against stock/bond blends and an all-world equity index, over the same months.
+        Blends are US stocks (≈ S&amp;P 500) with 5-year Treasuries, rebalanced monthly; the all-world index weights US,
+        developed and emerging markets by market value. Built from the same data as the sleeves, so it's like for like.
+        <br><b>FI 100</b> = all 5-year Treasury · <b>20/80 … 80/20</b> = stocks/bonds · <b>US 100</b> = all US stocks ·
+        <b>World</b> = all-world equity · ◆ = the chosen benchmark.</p>
+      <div class="mtable btable" id="btable"></div>
+      <details class="years">
+        <summary>Calendar years against every benchmark</summary>
+        <div class="ytable btable" id="bytable"></div>
       </details>
     </section>
 
