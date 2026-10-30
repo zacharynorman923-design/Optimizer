@@ -1,0 +1,16 @@
+{
+  "name": "Optimizer — mean-variance on factor portfolios",
+  "short_name": "Optimizer",
+  "description": "Mean-variance optimizer, efficient frontier and calendar-year backtest on Ken French size, value and profitability portfolios.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#0E1116",
+  "theme_color": "#0E1116",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icons/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
+    { "src": "icons/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "maskable" }
+  ]
+}
