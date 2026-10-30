@@ -145,3 +145,64 @@ test('impossible class limits are explained', () => {
   assert.match(O.boundsError([0, 0, 0], [1, 1, 1], [{ name: 'Equity', members: [0], lo: 0.7, hi: 1 }, { name: 'Alts', members: [2], lo: 0.4, hi: 1 }]), /minimums add up to 110%/);
   assert.equal(O.boundsError([0, 0, 0], [1, 1, 1], g(0, 0.3)), null);
 });
+
+// ------------------------------------------------- limits as a share of the class
+// Equity = sleeves 0,1,2: sleeve 0 at most 30% of Equity, sleeve 1 at least 20% of Equity.
+// Fixed income = 3,4: sleeve 4 between 40% and 60% of Fixed income.
+const REL7 = [
+  { i: 0, group: 'Equity', members: [0, 1, 2], lo: 0, hi: 0.3 },
+  { i: 1, group: 'Equity', members: [0, 1, 2], lo: 0.2, hi: 1 },
+  { i: 4, group: 'Fixed income', members: [3, 4], lo: 0.4, hi: 0.6 },
+];
+const H7 = O.relativeHalfspaces(REL7, 7);
+const relOk = (w) => REL7.every((r) => {
+  const t = r.members.reduce((s, j) => s + w[j], 0);
+  return w[r.i] <= r.hi * t + 1e-8 && w[r.i] >= r.lo * t - 1e-8;
+});
+
+test('share-of-class projection is feasible and is the nearest point', () => {
+  const r = rng(23);
+  for (let trial = 0; trial < 100; trial++) {
+    const v = LO7.map(() => r() * 2 - 0.5);
+    const p = O.projectAll(v, LO7, HI7, G7, H7);
+    assert.ok(feasible(p, LO7, HI7, G7) && relOk(p), `infeasible ${p}`);
+    for (let k = 0; k < 20; k++) {
+      const q = O.projectAll(LO7.map(() => r() * 2 - 0.5), LO7, HI7, G7, H7);
+      assert.ok(dot(v.map((x, i) => x - p[i]), q.map((x, i) => x - p[i])) <= 1e-6);
+    }
+  }
+});
+
+test('share-of-class max return beats every feasible portfolio', () => {
+  const r = rng(29);
+  const mu7 = LO7.map(() => 0.1), cov7 = LO7.map((_, i) => LO7.map((__, j) => (i === j ? 0.04 : 0.005)));
+  for (let trial = 0; trial < 30; trial++) {
+    const m = LO7.map(() => r() * 0.2);
+    const ctx = O.context(m, cov7, 0.02, LO7, HI7, G7, REL7);
+    const w = O.maxReturnAll(ctx);
+    assert.ok(feasible(w, LO7, HI7, G7) && relOk(w), `infeasible ${w}`);
+    for (let k = 0; k < 100; k++) {
+      const q = O.projectAll(LO7.map(() => r() * 2 - 0.5), LO7, HI7, G7, H7);
+      assert.ok(dot(m, q) <= dot(m, w) + 1e-7);
+    }
+  }
+});
+
+test('optimizer results respect share-of-class limits', () => {
+  const m = [0.12, 0.08, 0.10, 0.04, 0.05, 0.07, 0.03];
+  const cov7 = LO7.map((_, i) => LO7.map((__, j) => (i === j ? 0.01 + 0.01 * i : 0.004)));
+  const ctx = O.context(m, cov7, 0.02, LO7, HI7, G7, REL7);
+  const f = O.frontier(ctx);
+  for (const p of [...f, O.minVariance(ctx), O.maxSharpe(ctx, f), O.frontierTarget(ctx, f, 'vol', 0.11)]) {
+    assert.ok(feasible(p.w, LO7, HI7, G7) && relOk(p.w), `infeasible ${p.w}`);
+  }
+});
+
+test('impossible share-of-class limits are explained', () => {
+  const g = [{ name: 'Equity', members: [0, 1], lo: 0, hi: 1 }];
+  const names = ['US LV', 'US LG', 'Cash'];
+  const rel = (a, b) => [{ i: 0, group: 'Equity', members: [0, 1], ...a }, { i: 1, group: 'Equity', members: [0, 1], ...b }];
+  assert.match(O.boundsError([0, 0, 0], [1, 1, 1], g, rel({ lo: 0.6, hi: 1 }, { lo: 0.5, hi: 1 }), names), /minimum shares of Equity add up to 110%/);
+  assert.match(O.boundsError([0, 0, 0], [1, 1, 1], g, rel({ lo: 0.5, hi: 0.4 }, { lo: 0, hi: 1 }), names), /US LV's minimum share of Equity is above its maximum/);
+  assert.equal(O.boundsError([0, 0, 0], [1, 1, 1], g, rel({ lo: 0, hi: 0.3 }, { lo: 0, hi: 1 }), names), null);
+});
