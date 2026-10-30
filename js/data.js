@@ -34,7 +34,10 @@ export function commonWindow(cov, ids) {
   // how far back the window would go without the binding sleeves
   const rest = ids.filter((id) => cov[id].start !== start);
   const next = rest.length ? rest.map((id) => cov[id].start).sort().at(-1) : null;
-  return { start, end, binding, next };
+  // and which sleeves cut the end short (their data stops before the others')
+  const latest = ids.map((id) => cov[id].end).sort().at(-1);
+  const endBinding = end < latest ? ids.filter((id) => cov[id].end === end) : [];
+  return { start, end, binding, next, endBinding, latest };
 }
 
 /* Rows of returns for `ids` between two ISO dates (inclusive), plus RF. */
@@ -65,5 +68,5 @@ export const SHORT = {
   US_SmallWeak: 'US S Weak', DevExUS_SmallValue: 'Dev SV', DevExUS_LargeValue: 'Dev LV',
   DevExUS_Market: 'Dev Mkt', EM_SmallValue: 'EM SV', EM_LargeValue: 'EM LV',
   EM_Market: 'EM Mkt', Cash: 'Cash',
-  UST_1Y: 'UST 1Y', UST_5Y: 'UST 5Y', UST_10Y: 'UST 10Y', Commodities: 'Cmdty',
+  UST_1Y: 'UST 1Y', UST_5Y: 'UST 5Y', UST_10Y: 'UST 10Y', Commodities: 'Cmdty', Trend: 'Trend', Equity_LS: 'Eq L/S',
 };

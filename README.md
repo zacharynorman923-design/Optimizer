@@ -2,7 +2,8 @@
 
 A dependency-free web app for **mean-variance portfolio optimization** on Ken
 French's research portfolios: US size/value/profitability, developed ex-US and
-emerging markets, cash, US Treasuries and commodities, with history back to 1926. Pick sleeves and limits,
+emerging markets, cash, US Treasuries, commodities and two hedge-strategy proxies, with history back
+to 1926. Pick sleeves and limits,
 see the **efficient frontier**, and backtest the result **year by year** against
 a benchmark.
 
@@ -13,7 +14,7 @@ modules. Installable as a PWA, and it works offline once loaded.
 
 ## What it does
 
-- **Sleeves.** All 18 are on by default. Tick any subset and set a **minimum and maximum weight** for each.
+- **Sleeves.** All 20 are on by default. Tick any subset and set a **minimum and maximum weight** for each.
   Presets: *All*, *US to 1926* (the five US style sleeves plus cash, 100 years of history) and *None*.
 - **All the history there is.** The window defaults to the longest stretch every ticked sleeve
   covers. The app names the sleeves that set the start date and says how far back you'd get
@@ -70,7 +71,10 @@ cash come from the
 The 1-, 5- and 10-year Treasury sleeves (from 1962) are total returns rebuilt from the
 Federal Reserve's H.15 constant-maturity yields. Commodities are AQR's long-run
 commodity-futures index plus T-bills, continued with the HGER ETF after AQR's data ends
-(May 2025 at present).
+(May 2025 at present). Two hedge-strategy proxies come from academic long/short factors:
+Trend (AQR's time-series momentum factor from 1985, continued with AQR's AQMIX fund
+after the factor data ends) and Equity long/short (French's value
+plus momentum factors, from 1927).
 
 To refresh when French posts new data:
 
@@ -118,6 +122,11 @@ publishes it. Any static host works too, with no build command and `/` as the pu
 - **Treasury returns are rebuilt from yields**, so they are close to, not identical to, index
   returns. They are within about 1–2 points a year of published figures, with larger gaps in
   years of big rate moves.
+- **Hedge-strategy proxies are paper portfolios before fees.** Trend especially shows returns
+  that real trend-following funds didn't keep after their fees (typically 2% of assets plus
+  20% of profits) and trading costs. AQR's own managed-futures fund, AQMIX, returned about 2%
+  a year less than the factor from 2010 to 2026. Cap their weights, or treat the results as an
+  upper bound.
 - **Commodities join two sources.** AQR's paper index runs through May 2025, and HGER's
   actual net-of-fee returns follow. They correlated 0.86 where both exist, but they follow
   different index rules.

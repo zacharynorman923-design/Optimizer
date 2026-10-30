@@ -23,6 +23,9 @@ All files come from the [Kenneth R. French Data Library](https://mba.tuck.dartmo
 | `F-F_Research_Data_5_Factors_2x3_CSV.zip` | 5 factors for the DFAT regression |
 | AQR "Commodities for the Long Run: Index Level Data, Monthly" ([page](https://www.aqr.com/Insights/Datasets/Commodities-for-the-Long-Run-Index-Level-Data-Monthly)) | Commodity futures returns through AQR's last month |
 | HGER (Harbor Commodity All-Weather Strategy ETF), daily dividend-adjusted closes from Yahoo Finance | Commodity returns after AQR's last month |
+| `F-F_Momentum_Factor_CSV.zip` (French) | Momentum factor (Mom) for the equity long/short sleeve |
+| AQR "Time Series Momentum: Factors, Monthly" ([page](https://www.aqr.com/Insights/Datasets/Time-Series-Momentum-Factors-Monthly)) | Trend-following sleeve |
+| AQMIX (AQR Managed Futures Strategy Fund, Class I), daily dividend-adjusted closes from Yahoo Finance | Trend after AQR's last month |
 | Federal Reserve H.15, daily Treasury constant-maturity yields ([download page](https://www.federalreserve.gov/datadownload/Choose.aspx?rel=H15)) | Yields for the Treasury sleeves |
 | `6_Portfolios_2x3_CSV.zip` | US size × book-to-market portfolios |
 | `6_Portfolios_ME_OP_2x3_CSV.zip` | US size × operating-profitability portfolios |
@@ -53,6 +56,8 @@ Each sleeve keeps its own start date: earlier months are blank, not truncated.
 | Cash | RF (1-month T-bill) | Money Market-Taxable |
 
 | Commodities | AQR equal-weight commodity futures excess return + RF; HGER total return after AQR's last month | Commodities Broad Basket |
+| Trend | AQR time-series momentum factor (all assets) + RF; AQMIX total return after AQR's last month | Systematic Trend |
+| Equity_LS | 50% HML + 50% Mom (French), rebalanced monthly, + RF | Equity Market Neutral |
 | UST_1Y / UST_5Y / UST_10Y | H.15 1-, 5- and 10-year constant-maturity yields, built into total returns (see below) | Short / Intermediate / Long Government |
 
 All six portfolio sleeves use French's **value-weighted** returns. Percentages are
@@ -104,6 +109,37 @@ directly because FRED refuses connections from the cloud environment this was bu
 - AQR's disclosures: information purposes only, not investment advice, no warranty. The
   dataset is © 2018 Levine, Ooi, Richardson and Sasseville.
 
+**Hedge-strategy proxies (Trend, Equity_LS).** There's no broad hedge fund index before
+1990 (HFRI starts then), so these two sleeves stand in for two common hedge fund strategies,
+built from academic long/short factors:
+- **Trend:** AQR's time-series momentum factor from Moskowitz, Ooi & Pedersen, "Time Series
+  Momentum" (*Journal of Financial Economics*, 2012), updated by AQR. Each month it goes
+  long or short 58 futures and forwards (equity indexes, bonds, currencies, commodities)
+  according to their past 12-month return. AQR publishes it as an excess return, so RF is
+  added. It runs from 1985-01 to AQR's latest month, which is usually a few months behind
+  French. After that the sleeve continues with **AQMIX**, AQR's own managed-futures mutual
+  fund, using its actual monthly returns after fees (from Yahoo, distributions reinvested).
+  - **How well they match:** over 2010-02 to 2026-05 the fund correlated 0.76 with the
+    factor, with 8.5% a year tracking error.
+  - **What fees and costs took:** the fund returned 4.8% a year against the factor's 6.9%,
+    at lower volatility (9.9% vs 13.0%). That's a direct measure of what the paper factor
+    leaves out.
+  - `trend_splice.csv` and the `Trend_Splice` sheet hold the comparison. AQR's century-long
+    trend reconstruction isn't published as a download.
+- **Equity_LS:** half value (HML) and half momentum (Mom), rebalanced monthly, plus RF. These
+  are long/short US stock portfolios, the classic market-neutral pair, because value and
+  momentum tend to offset each other. Runs from 1927-01.
+- **Behaviour:** both act as expected. Trend gained +26.6% in 2008 and +26.5% in 2022, with
+  about zero correlation to stocks. Equity_LS's correlation with stocks is −0.29, and it
+  shows momentum's 2009 crash (−29.6%).
+- **These are paper returns, before any fees, trading costs or the cost of shorting.**
+  - **Trend is the most overstated.** (The AQMIX months at the end are the exception: they're
+    real fund returns after fees.) It shows 15.7% a year since 1985 at a Sharpe of 0.98.
+    Real trend-following funds charge roughly 2% of assets plus 20% of profits and pay
+    trading costs, and have earned far less, so the optimizer will tend to overweight it.
+  - **Equity_LS** ignores short-selling costs and momentum's high turnover.
+  - Cap their weights, or read their results as an upper bound.
+
 ## Outputs (`data/processed/`)
 
 | File | Contents |
@@ -113,6 +149,7 @@ directly because FRED refuses connections from the cloud environment this was bu
 | `sleeve_metadata.csv` | `sleeve, name, region, morningstar_category, source_file, source_column, start_date, end_date, months` |
 | `optimizer_returns.json` | The three files above in one bundle for the React app (blank months are `null`) |
 | `commodities_splice.csv` | The commodity sleeve with AQR and HGER side by side and the source of each month |
+| `trend_splice.csv` | The Trend sleeve with the AQR factor and AQMIX side by side and the source of each month |
 | `stats.xlsx` | One sheet per item, listed below |
 | `dfat_extended.csv`, `dfat_regression.csv`, `dfat_synthetic_vs_actual.png` | Only when DFAT returns are provided |
 
@@ -125,6 +162,7 @@ directly because FRED refuses connections from the cloud environment this was bu
 - **Annual_Check**: compounded monthly returns compared with French's own annual blocks. Differences should be rounding-sized (a few hundredths of a percent).
 - **Size_Lag_Check**: see the international market sleeves above.
 - **Commodities_Splice**: how closely HGER tracked AQR over the months both exist.
+- **Trend_Splice**: how closely AQMIX tracked AQR's trend factor over the months both exist.
 
 Sharpe = annualized mean monthly excess return over RF ÷ annualized standard deviation of
 excess returns (arithmetic, ×12 and ×√12).
