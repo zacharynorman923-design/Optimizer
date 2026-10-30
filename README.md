@@ -104,8 +104,8 @@ The 1-, 5- and 10-year Treasury sleeves (from 1962) are total returns rebuilt fr
 Federal Reserve's H.15 constant-maturity yields. Commodities are AQR's long-run
 commodity-futures index plus T-bills, continued with the HGER ETF after AQR's data ends
 (May 2025 at present). Two hedge-strategy proxies come from academic long/short factors:
-Trend (AQR's time-series momentum factor from 1985 through 2025, then AQR's own fund, AQMIX,
-from January 2026) and Equity long/short (French's value
+Trend (AQR's time-series momentum factor from 1985 through 2025, less a 2% a year fee, then
+AQR's own fund, AQMIX, from January 2026) and Equity long/short (French's value
 plus momentum factors, from 1927).
 
 To refresh when French posts new data:

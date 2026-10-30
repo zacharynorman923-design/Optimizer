@@ -56,7 +56,7 @@ Each sleeve keeps its own start date: earlier months are blank, not truncated.
 | Cash | RF (1-month T-bill) | Money Market-Taxable |
 
 | Commodities | AQR equal-weight commodity futures excess return + RF; HGER total return after AQR's last month | Commodities Broad Basket |
-| Trend | AQR time-series momentum factor (all assets) + RF through 2025; AQMIX total return from January 2026 | Systematic Trend |
+| Trend | AQR time-series momentum factor (all assets) + RF − 2%/yr fee through 2025; AQMIX total return from January 2026 | Systematic Trend |
 | Equity_LS | 50% HML + 50% Mom (French), rebalanced monthly, + RF | Equity Market Neutral |
 | UST_1Y / UST_5Y / UST_10Y | H.15 1-, 5- and 10-year constant-maturity yields, built into total returns (see below) | Short / Intermediate / Long Government |
 
@@ -121,11 +121,14 @@ built from academic long/short factors:
   own managed-futures mutual fund: its actual monthly returns after fees, from Yahoo with
   distributions reinvested. That way the current year matches the real fund. Earlier months stay on
   the factor, and if AQR's data ever ends before that date, AQMIX fills from AQR's last month.
+  - **Fee haircut:** the factor months have **2% a year subtracted, as 2%/12 each month**
+    (`TREND_FACTOR_FEE` in the script), a stand-in for fees and trading costs. The AQMIX
+    months aren't adjusted, since they're already net of the fund's fees.
   - **How well they match:** over 2010-02 to 2026-05 the fund correlated 0.76 with the
     factor, with 8.5% a year tracking error.
-  - **What fees and costs took:** the fund returned 4.8% a year against the factor's 6.9%,
-    at lower volatility (9.9% vs 13.0%). That's a direct measure of what the paper factor
-    leaves out.
+  - **Why 2%:** before the haircut, the fund returned 4.8% a year against the factor's 6.9%,
+    at lower volatility (9.9% vs 13.0%). That's a 2.1% a year gap. After the haircut the
+    average difference is about 0.1% a year.
   - `trend_splice.csv` and the `Trend_Splice` sheet hold the comparison. AQR's century-long
     trend reconstruction isn't published as a download.
 - **Equity_LS:** half value (HML) and half momentum (Mom), rebalanced monthly, plus RF. These
@@ -136,8 +139,9 @@ built from academic long/short factors:
   shows momentum's 2009 crash (−29.6%).
 - **These are paper returns, before any fees, trading costs or the cost of shorting.**
   - **Trend is the most overstated.** (2026 is the exception: it's AQMIX's real return after fees.) It shows 15.7% a year since 1985 at a Sharpe of 0.98.
-    Real trend-following funds charge roughly 2% of assets plus 20% of profits and pay
-    trading costs, and have earned far less, so the optimizer will tend to overweight it.
+    It's now shown **after a 2% a year fee haircut** (13.3% a year since 1985, Sharpe 0.82),
+    which matches AQMIX's real record on average. It's still a paper strategy, so treat it as
+    optimistic.
   - **Equity_LS** ignores short-selling costs and momentum's high turnover.
   - Cap their weights, or read their results as an upper bound.
 
