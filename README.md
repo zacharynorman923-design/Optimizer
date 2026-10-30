@@ -15,6 +15,13 @@ modules. Installable as a PWA, and it works offline once loaded.
 ## What it does
 
 - **Sleeves.** All 20 are on by default. Tick any subset and set a **minimum and maximum weight** for each.
+  The sleeve list is grouped by asset class.
+- **Asset-class limits.** A minimum and maximum for **Equity**, **Fixed income** (Treasuries and
+  cash) and **Alts** (commodities, trend, equity long/short), as a percent of the whole portfolio,
+  e.g. equity 60–70%, fixed income 20–40%, alts at most 10%. Every objective respects them along
+  with the per-sleeve limits, and the *Now* column shows where the portfolio lands. Limits that
+  can't all be met are explained. *My own weights* ignores them but flags any class that's out
+  of range.
   Presets: *All*, *US to 1926* (the five US style sleeves plus cash, 100 years of history) and *None*.
 - **All the history there is.** The window defaults to the longest stretch every ticked sleeve
   covers. The app names the sleeves that set the start date and says how far back you'd get
@@ -51,7 +58,11 @@ Returns are monthly decimal total returns from `data/processed/optimizer_returns
   accelerated projected gradient descent (FISTA).
   - The projection onto `{Σw = 1, loᵢ ≤ wᵢ ≤ hiᵢ}` is exact: `wᵢ = clip(vᵢ − τ, loᵢ, hiᵢ)`, with `τ`
     found by bisection.
-  - The max-return end is solved exactly by filling the best sleeves first.
+  - Asset-class limits add one shift per class: `wᵢ = clip(vᵢ − τ − σ_g, loᵢ, hiᵢ)`, where `σ_g` is
+    zero unless the class total would break its limit. The classes don't overlap, so each settles
+    independently for a given `τ`, and the projection stays exact.
+  - The max-return end is solved exactly: each class is brought up to its minimum with its best
+    sleeves, then the rest goes to the best sleeves within the sleeve and class maximums.
 - **Max Sharpe:** the best Sharpe on the frontier, refined by golden-section search on `γ`.
 - **Target volatility / return:** found by bisecting `γ`, because both rise along the frontier.
   If a target is out of reach, the app says so and shows the nearest portfolio.
@@ -59,7 +70,7 @@ Returns are monthly decimal total returns from `data/processed/optimizer_returns
   (annual = December close).
 - **Metrics:** defined exactly as in `data/processed/stats.xlsx`. The JS and Python numbers match.
 
-`npm test` checks the optimizer against closed-form answers: minimum variance `Σ⁻¹1/1ᵀΣ⁻¹1` and
+`npm test` checks the optimizer against closed-form answers, and checks the class-limited projection and max-return solver on thousands of random cases: minimum variance `Σ⁻¹1/1ᵀΣ⁻¹1` and
 the tangency portfolio `Σ⁻¹(μ − rf)` when no limit binds. It also checks the limits, frontier
 targets and backtest arithmetic.
 

@@ -109,6 +109,15 @@ SLEEVES = [
      "50% HML + 50% Mom (French), rebalanced monthly, + RF"),
 ]
 
+# Asset class for the app's class limits (Equity / Fixed income / Alts).
+ALTS = {"Commodities", "Trend", "Equity_LS"}
+FIXED_INCOME = {"UST_1Y", "UST_5Y", "UST_10Y", "Cash"}
+
+
+def asset_class(sid: str) -> str:
+    return "Alts" if sid in ALTS else "Fixed income" if sid in FIXED_INCOME else "Equity"
+
+
 # Sleeves the app leaves unticked until you tick them (e.g. data that ends early, which would
 # cut the shared window short). Empty for now; the mechanism stays for future sleeves.
 DEFAULT_OFF: set[str] = set()
@@ -886,6 +895,7 @@ def metadata(sleeves: pd.DataFrame, zips: dict[str, Path]) -> pd.DataFrame:
             "end_date": f"{s.last_valid_index():%Y-%m-%d}" if s.notna().any() else "",
             "months": int(s.notna().sum()),
             "default_on": sid not in DEFAULT_OFF,
+            "asset_class": asset_class(sid),
         })
     return pd.DataFrame(rows)
 

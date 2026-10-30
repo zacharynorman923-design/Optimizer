@@ -146,7 +146,7 @@ built from academic long/short factors:
 |---|---|
 | `sleeves_monthly.csv` | `date` (month-end, `YYYY-MM-DD`) + one column per sleeve, decimal total returns |
 | `sleeves_annual.csv` | `year` + one column per sleeve; compounded monthly returns, complete calendar years only |
-| `sleeve_metadata.csv` | `sleeve, name, region, morningstar_category, source_file, source_column, start_date, end_date, months` |
+| `sleeve_metadata.csv` | `sleeve, name, region, morningstar_category, source_file, source_column, start_date, end_date, months, default_on, asset_class` |
 | `optimizer_returns.json` | The three files above in one bundle for the React app (blank months are `null`) |
 | `commodities_splice.csv` | The commodity sleeve with AQR and HGER side by side and the source of each month |
 | `trend_splice.csv` | The Trend sleeve with the AQR factor and AQMIX side by side and the source of each month |

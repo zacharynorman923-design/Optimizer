@@ -15,6 +15,7 @@ const ym = (iso) => iso.slice(0, 7);
 
 const KEY = 'optimizer-state-v1', THEME_KEY = 'optimizer-theme';
 const US_1926 = ['US_LargeCap', 'US_SmallValue', 'US_SmallGrowth', 'US_LargeValue', 'US_LargeGrowth', 'Cash'];
+const CLASSES = ['Equity', 'Fixed income', 'Alts'];
 const OBJECTIVES = {
   maxSharpe: 'Max Sharpe', minVar: 'Min volatility', targetVol: 'Max return at a volatility',
   targetRet: 'Min volatility for a return', equal: 'Equal weight', custom: 'My own weights',
@@ -24,7 +25,7 @@ let bundle, cov, sleeves, ids, defaultOn = {};
 // ticked unless you've changed it; some sleeves start unticked (see default_on in the data)
 const isOn = (id) => (id in state.include ? state.include[id] : defaultOn[id] !== false);
 let state = {
-  include: {}, lo: {}, hi: {}, custom: {}, objective: 'maxSharpe', target: null,
+  include: {}, lo: {}, hi: {}, custom: {}, classLo: {}, classHi: {}, objective: 'maxSharpe', target: null,
   start: 'earliest', end: 'latest', rebalance: 'annual', benchmark: 'US_LargeCap',
 };
 
@@ -47,17 +48,46 @@ $('themeBtn').onclick = () => {
 /* ------------------------------- controls -------------------------------- */
 const bound = (map, id, dflt) => (Number.isFinite(map[id]) ? map[id] : dflt);
 
+const classOf = (s) => s.asset_class || 'Equity';
+
 function renderSleeves() {
-  $('sleeves').innerHTML = sleeves.map((s) => {
-    const on = isOn(s.sleeve);
-    return `<div class="sleeve${on ? '' : ' off'}" data-id="${s.sleeve}">
-      <input type="checkbox" ${on ? 'checked' : ''} aria-label="Include ${esc(s.name)}">
-      <div class="s-name">${esc(s.name)}<span class="s-meta">from ${ym(s.start_date)} · ${esc(s.morningstar_category)}</span></div>
-      <input class="num-in lo" type="number" inputmode="decimal" min="0" max="100" step="1" value="${bound(state.lo, s.sleeve, 0)}" aria-label="Minimum %" ${on ? '' : 'disabled'}>
-      <input class="num-in hi" type="number" inputmode="decimal" min="0" max="100" step="1" value="${bound(state.hi, s.sleeve, 100)}" aria-label="Maximum %" ${on ? '' : 'disabled'}>
-      <div class="s-w"></div>
-    </div>`;
+  $('sleeves').innerHTML = CLASSES.map((c) => {
+    const rows = sleeves.filter((s) => classOf(s) === c);
+    return rows.length ? `<div class="sleeve-group">${c}</div>` + rows.map(sleeveRow).join('') : '';
   }).join('');
+}
+
+function classMembers(c) {
+  const names = sleeves.filter((s) => classOf(s) === c).map((s) => SHORT[s.sleeve] || s.sleeve);
+  return names.length > 5 ? `${names.length} sleeves (see the sleeve list)` : names.join(', ');
+}
+
+function renderClasses() {
+  $('classes').innerHTML = CLASSES.map((c) => `<div class="class-row" data-class="${c}">
+      <div class="c-name">${c}<small>${classMembers(c)}</small></div>
+      <input class="num-in lo" type="number" inputmode="decimal" min="0" max="100" step="1" value="${bound(state.classLo, c, 0)}" aria-label="${c} minimum %">
+      <input class="num-in hi" type="number" inputmode="decimal" min="0" max="100" step="1" value="${bound(state.classHi, c, 100)}" aria-label="${c} maximum %">
+      <div class="c-now"></div>
+    </div>`).join('');
+}
+
+$('classes').addEventListener('input', (e) => {
+  const row = e.target.closest('.class-row'); if (!row) return;
+  const map = e.target.classList.contains('lo') ? state.classLo : state.classHi;
+  const v = parseFloat(e.target.value);
+  if (Number.isFinite(v)) map[row.dataset.class] = Math.max(0, Math.min(100, v)); else delete map[row.dataset.class];
+  update(250);
+});
+
+function sleeveRow(s) {
+  const on = isOn(s.sleeve);
+  return `<div class="sleeve${on ? '' : ' off'}" data-id="${s.sleeve}">
+    <input type="checkbox" ${on ? 'checked' : ''} aria-label="Include ${esc(s.name)}">
+    <div class="s-name">${esc(s.name)}<span class="s-meta">from ${ym(s.start_date)} · ${esc(s.morningstar_category)}</span></div>
+    <input class="num-in lo" type="number" inputmode="decimal" min="0" max="100" step="1" value="${bound(state.lo, s.sleeve, 0)}" aria-label="Minimum %" ${on ? '' : 'disabled'}>
+    <input class="num-in hi" type="number" inputmode="decimal" min="0" max="100" step="1" value="${bound(state.hi, s.sleeve, 100)}" aria-label="Maximum %" ${on ? '' : 'disabled'}>
+    <div class="s-w"></div>
+  </div>`;
 }
 
 $('sleeves').addEventListener('change', (e) => {
@@ -167,13 +197,19 @@ function run() {
 
   const lo = inc.map((id) => bound(state.lo, id, 0) / 100);
   const hi = inc.map((id) => bound(state.hi, id, 100) / 100);
-  const bad = O.boundsError(lo, hi);
+  const groups = CLASSES.map((c) => ({
+    name: c,
+    members: inc.map((id, i) => [id, i]).filter(([id]) => classOf(sleeves.find((s) => s.sleeve === id)) === c).map(([, i]) => i),
+    lo: bound(state.classLo, c, 0) / 100,
+    hi: bound(state.classHi, c, 100) / 100,
+  }));
+  const bad = O.boundsError(lo, hi, groups);
   if (bad && state.objective !== 'custom') {
     status(`These limits can't all be met: ${bad}.`, 'err'); $('results').classList.add('hidden'); return;
   }
 
   const mo = O.moments(s.matrix, s.rf);
-  const ctx = O.context(mo.mu, mo.cov, mo.rf, bad ? inc.map(() => 0) : lo, bad ? inc.map(() => 1) : hi);
+  const ctx = O.context(mo.mu, mo.cov, mo.rf, bad ? inc.map(() => 0) : lo, bad ? inc.map(() => 1) : hi, bad ? [] : groups);
   const front = O.frontier(ctx);
   const sharpeP = O.maxSharpe(ctx, front);
   const minP = front[0];
@@ -196,7 +232,7 @@ function run() {
       if (chosen.clamped === 'high') msg = `No portfolio within these limits reaches ${state.target}% ${what}. Showing the highest available: ${pct(chosen[metric])}.`;
       break;
     }
-    case 'equal': chosen = evalW(O.project(inc.map(() => 1 / inc.length), lo, hi)); break;
+    case 'equal': chosen = evalW(O.project(inc.map(() => 1 / inc.length), lo, hi, groups)); break;
     case 'custom': {
       const raw = inc.map((id) => bound(state.custom, id, 0));
       const tot = raw.reduce((a, b) => a + b, 0);
@@ -205,6 +241,8 @@ function run() {
       chosen = evalW(w);
       if (tot && Math.abs(tot - 100) > 0.05) msg = `Your weights add up to ${tot.toFixed(1)}%, so they've been scaled to 100%.`;
       if (!tot) msg = 'No weights entered yet, so this shows equal weight. Type weights in the right-hand column of the sleeve list.';
+      const out = groups.filter((g) => { const t = g.members.reduce((a, i) => a + w[i], 0); return t < g.lo - 1e-6 || t > g.hi + 1e-6; });
+      if (tot && out.length) msg += `${msg ? ' ' : ''}Your weights are outside the ${out.map((g) => g.name).join(' and ')} limit${out.length > 1 ? 's' : ''} (limits don't apply to your own weights).`;
       break;
     }
     default: chosen = sharpeP;
@@ -220,6 +258,7 @@ function run() {
   const years = py.map((p, i) => ({ year: p.year, partial: p.partial, port: p.ret, bench: by[i].ret }));
 
   renderWeights(inc, chosen, ctx);
+  renderClassMix(groups, chosen.w);
   renderKpis(chosen, pm);
   const corr = S.correlation(s.matrix);
   redraw = () => {
@@ -277,6 +316,17 @@ function renderWeights(inc, chosen, ctx) {
       cell.textContent = i < 0 ? '' : pct(chosen.w[i], 0);
     }
   });
+}
+
+function renderClassMix(groups, w) {
+  const totals = groups.map((g) => g.members.reduce((a, i) => a + w[i], 0));
+  document.querySelectorAll('.class-row').forEach((row) => {
+    const k = CLASSES.indexOf(row.dataset.class), g = groups[k], t = totals[k];
+    const cell = row.querySelector('.c-now');
+    cell.textContent = g.members.length ? pct(t, 0) : '—';
+    cell.classList.toggle('off-limit', g.members.length > 0 && (t < g.lo - 1e-6 || t > g.hi + 1e-6));
+  });
+  $('classMix').textContent = groups.map((g, k) => `${g.name} ${pct(totals[k], 0)}`).join(' · ');
 }
 
 function renderKpis(chosen, pm) {
@@ -359,5 +409,6 @@ function renderYears(years) {
   $('dataLine').textContent = `Ken French Data Library · data cut ${cut} · built ${bundle.generated_at.slice(0, 10)}`;
   $('benchSel').innerHTML = sleeves.map((s) => `<option value="${s.sleeve}">${esc(s.name)}</option>`).join('');
   renderSleeves();
+  renderClasses();
   run();
 })();
