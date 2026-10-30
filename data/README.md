@@ -23,6 +23,8 @@ All files come from the [Kenneth R. French Data Library](https://mba.tuck.dartmo
 | `F-F_Research_Data_5_Factors_2x3_CSV.zip` | 5 factors for the DFAT regression |
 | AQR "Commodities for the Long Run: Index Level Data, Monthly" ([page](https://www.aqr.com/Insights/Datasets/Commodities-for-the-Long-Run-Index-Level-Data-Monthly)) | Commodity futures returns through AQR's last month |
 | HGER (Harbor Commodity All-Weather Strategy ETF), daily dividend-adjusted closes from Yahoo Finance | Commodity returns after AQR's last month |
+| `F-F_Momentum_Factor_CSV.zip` (French) | Momentum factor (Mom) for the equity long/short sleeve |
+| AQR "Time Series Momentum: Factors, Monthly" ([page](https://www.aqr.com/Insights/Datasets/Time-Series-Momentum-Factors-Monthly)) | Trend-following sleeve |
 | Federal Reserve H.15, daily Treasury constant-maturity yields ([download page](https://www.federalreserve.gov/datadownload/Choose.aspx?rel=H15)) | Yields for the Treasury sleeves |
 | `6_Portfolios_2x3_CSV.zip` | US size × book-to-market portfolios |
 | `6_Portfolios_ME_OP_2x3_CSV.zip` | US size × operating-profitability portfolios |
@@ -53,6 +55,8 @@ Each sleeve keeps its own start date: earlier months are blank, not truncated.
 | Cash | RF (1-month T-bill) | Money Market-Taxable |
 
 | Commodities | AQR equal-weight commodity futures excess return + RF; HGER total return after AQR's last month | Commodities Broad Basket |
+| Trend | AQR time-series momentum factor (all assets) + RF. **Starts unticked in the app.** | Systematic Trend |
+| Equity_LS | 50% HML + 50% Mom (French), rebalanced monthly, + RF | Equity Market Neutral |
 | UST_1Y / UST_5Y / UST_10Y | H.15 1-, 5- and 10-year constant-maturity yields, built into total returns (see below) | Short / Intermediate / Long Government |
 
 All six portfolio sleeves use French's **value-weighted** returns. Percentages are
@@ -103,6 +107,29 @@ directly because FRED refuses connections from the cloud environment this was bu
   The `Commodities_Splice` sheet in `stats.xlsx` holds the overlap statistics.
 - AQR's disclosures: information purposes only, not investment advice, no warranty. The
   dataset is © 2018 Levine, Ooi, Richardson and Sasseville.
+
+**Hedge-strategy proxies (Trend, Equity_LS).** There's no broad hedge fund index before
+1990 (HFRI starts then), so these two sleeves stand in for two common hedge fund strategies,
+built from academic long/short factors:
+- **Trend:** AQR's time-series momentum factor from Moskowitz, Ooi & Pedersen, "Time Series
+  Momentum" (*Journal of Financial Economics*, 2012), updated by AQR. Each month it goes
+  long or short 58 futures and forwards (equity indexes, bonds, currencies, commodities)
+  according to their past 12-month return. AQR publishes it as an excess return, so RF is
+  added. It runs from 1985-01 to AQR's latest month, which is usually a few months behind
+  French. It **starts unticked** in the app so the default window isn't cut short. AQR's
+  century-long trend reconstruction isn't published as a download.
+- **Equity_LS:** half value (HML) and half momentum (Mom), rebalanced monthly, plus RF. These
+  are long/short US stock portfolios, the classic market-neutral pair, because value and
+  momentum tend to offset each other. Runs from 1927-01.
+- **Behaviour:** both act as expected. Trend gained +26.6% in 2008 and +26.5% in 2022, with
+  about zero correlation to stocks. Equity_LS's correlation with stocks is −0.29, and it
+  shows momentum's 2009 crash (−29.6%).
+- **These are paper returns, before any fees, trading costs or the cost of shorting.**
+  - **Trend is the most overstated.** It shows 15.7% a year since 1985 at a Sharpe of 0.98.
+    Real trend-following funds charge roughly 2% of assets plus 20% of profits and pay
+    trading costs, and have earned far less, so the optimizer will tend to overweight it.
+  - **Equity_LS** ignores short-selling costs and momentum's high turnover.
+  - Cap their weights, or read their results as an upper bound.
 
 ## Outputs (`data/processed/`)
 

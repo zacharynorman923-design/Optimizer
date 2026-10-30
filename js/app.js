@@ -20,7 +20,9 @@ const OBJECTIVES = {
   targetRet: 'Min volatility for a return', equal: 'Equal weight', custom: 'My own weights',
 };
 
-let bundle, cov, sleeves, ids;
+let bundle, cov, sleeves, ids, defaultOn = {};
+// ticked unless you've changed it; some sleeves start unticked (see default_on in the data)
+const isOn = (id) => (id in state.include ? state.include[id] : defaultOn[id] !== false);
 let state = {
   include: {}, lo: {}, hi: {}, custom: {}, objective: 'maxSharpe', target: null,
   start: 'earliest', end: 'latest', rebalance: 'annual', benchmark: 'US_LargeCap',
@@ -47,7 +49,7 @@ const bound = (map, id, dflt) => (Number.isFinite(map[id]) ? map[id] : dflt);
 
 function renderSleeves() {
   $('sleeves').innerHTML = sleeves.map((s) => {
-    const on = state.include[s.sleeve] !== false;
+    const on = isOn(s.sleeve);
     return `<div class="sleeve${on ? '' : ' off'}" data-id="${s.sleeve}">
       <input type="checkbox" ${on ? 'checked' : ''} aria-label="Include ${esc(s.name)}">
       <div class="s-name">${esc(s.name)}<span class="s-meta">from ${ym(s.start_date)} · ${esc(s.morningstar_category)}</span></div>
@@ -150,7 +152,7 @@ function syncControls(win) {
 }
 
 function run() {
-  const inc = ids.filter((id) => state.include[id] !== false);
+  const inc = ids.filter(isOn);
   if (!inc.length) { $('history').innerHTML = ''; status('Tick at least one sleeve.', 'err'); $('results').classList.add('hidden'); syncControls({ start: cov.Cash.start, end: cov.Cash.end }); return; }
   if (!ids.includes(state.benchmark)) state.benchmark = 'US_LargeCap';
 
@@ -243,6 +245,10 @@ function renderHistory(win, s, inc) {
       : 'That is all the history these sleeves have.';
   } else {
     h += `Narrowed from the earliest shared month, ${ym(win.start)}.`;
+  }
+  const endBind = win.endBinding.filter((id) => inc.includes(id));
+  if (state.end === 'latest' && endBind.length) {
+    h += ` It ends in ${ym(win.end)} because ${endBind.map(name).join(', ')} ${endBind.length === 1 ? 'has' : 'have'} no data after that (the rest run to ${ym(win.latest)}).`;
   }
   $('history').innerHTML = h;
 }
@@ -348,6 +354,7 @@ function renderYears(years) {
   cov = coverage(bundle);
   sleeves = bundle.sleeves;
   ids = sleeves.map((s) => s.sleeve);
+  sleeves.forEach((s) => { defaultOn[s.sleeve] = s.default_on !== false; });
   const cut = [...new Set(Object.values(bundle.data_cut))].join(', ');
   $('dataLine').textContent = `Ken French Data Library · data cut ${cut} · built ${bundle.generated_at.slice(0, 10)}`;
   $('benchSel').innerHTML = sleeves.map((s) => `<option value="${s.sleeve}">${esc(s.name)}</option>`).join('');

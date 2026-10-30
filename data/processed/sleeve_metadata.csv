@@ -1,19 +1,21 @@
-sleeve,name,region,morningstar_category,source_file,source_column,start_date,end_date,months
-US_LargeCap,US Large Cap (total market),US,Large Blend,F-F_Research_Data_Factors_CSV.zip,Mkt-RF + RF,1926-07-31,2026-09-30,1203
-US_SmallValue,US Small Value,US,Small Value,6_Portfolios_2x3_CSV.zip,SMALL HiBM,1926-07-31,2026-09-30,1203
-US_SmallGrowth,US Small Growth,US,Small Growth,6_Portfolios_2x3_CSV.zip,SMALL LoBM,1926-07-31,2026-09-30,1203
-US_LargeValue,US Large Value,US,Large Value,6_Portfolios_2x3_CSV.zip,BIG HiBM,1926-07-31,2026-09-30,1203
-US_LargeGrowth,US Large Growth,US,Large Growth,6_Portfolios_2x3_CSV.zip,BIG LoBM,1926-07-31,2026-09-30,1203
-US_SmallRobust,US Small Robust Profitability,US,Small Blend,6_Portfolios_ME_OP_2x3_CSV.zip,SMALL HiOP,1963-07-31,2026-09-30,759
-US_SmallWeak,US Small Weak Profitability,US,Small Blend,6_Portfolios_ME_OP_2x3_CSV.zip,SMALL LoOP,1963-07-31,2026-09-30,759
-DevExUS_SmallValue,Developed ex-US Small Value,Developed ex-US,Foreign Small/Mid Value,Developed_ex_US_6_Portfolios_ME_BE-ME_CSV.zip,SMALL HiBM,1990-07-31,2026-09-30,435
-DevExUS_LargeValue,Developed ex-US Large Value,Developed ex-US,Foreign Large Value,Developed_ex_US_6_Portfolios_ME_BE-ME_CSV.zip,BIG HiBM,1990-07-31,2026-09-30,435
-DevExUS_Market,Developed ex-US Market,Developed ex-US,Foreign Large Blend,Developed_ex_US_6_Portfolios_ME_BE-ME_CSV.zip,cap-weighted six portfolios,1990-07-31,2026-09-30,435
-EM_SmallValue,Emerging Markets Small Value,Emerging,Diversified Emerging Mkts,Emerging_Markets_6_Portfolios_ME_BE-ME_CSV.zip,SMALL HiBM,1989-07-31,2026-09-30,447
-EM_LargeValue,Emerging Markets Large Value,Emerging,Diversified Emerging Mkts,Emerging_Markets_6_Portfolios_ME_BE-ME_CSV.zip,BIG HiBM,1989-07-31,2026-09-30,447
-EM_Market,Emerging Markets Market,Emerging,Diversified Emerging Mkts,Emerging_Markets_6_Portfolios_ME_BE-ME_CSV.zip,cap-weighted six portfolios,1989-07-31,2026-09-30,447
-Cash,Cash (1-month T-bill),US,Money Market-Taxable,F-F_Research_Data_Factors_CSV.zip,RF,1926-07-31,2026-09-30,1203
-UST_1Y,US Treasury 1-year,US,Short Government,Federal Reserve H.15 (daily),par bond from month-end 1-year CMT yield,1962-02-28,2026-09-30,776
-UST_5Y,US Treasury 5-year,US,Intermediate Government,Federal Reserve H.15 (daily),par bond from month-end 5-year CMT yield,1962-02-28,2026-09-30,776
-UST_10Y,US Treasury 10-year,US,Long Government,Federal Reserve H.15 (daily),par bond from month-end 10-year CMT yield,1962-02-28,2026-09-30,776
-Commodities,Commodities (equal-weight futures),Global,Commodities Broad Basket,AQR Commodities for the Long Run (monthly) + HGER (Yahoo Finance),AQR equal-weight excess return + RF; HGER total return after AQR's last month,1926-07-31,2026-09-30,1203
+sleeve,name,region,morningstar_category,source_file,source_column,start_date,end_date,months,default_on
+US_LargeCap,US Large Cap (total market),US,Large Blend,F-F_Research_Data_Factors_CSV.zip,Mkt-RF + RF,1926-07-31,2026-09-30,1203,True
+US_SmallValue,US Small Value,US,Small Value,6_Portfolios_2x3_CSV.zip,SMALL HiBM,1926-07-31,2026-09-30,1203,True
+US_SmallGrowth,US Small Growth,US,Small Growth,6_Portfolios_2x3_CSV.zip,SMALL LoBM,1926-07-31,2026-09-30,1203,True
+US_LargeValue,US Large Value,US,Large Value,6_Portfolios_2x3_CSV.zip,BIG HiBM,1926-07-31,2026-09-30,1203,True
+US_LargeGrowth,US Large Growth,US,Large Growth,6_Portfolios_2x3_CSV.zip,BIG LoBM,1926-07-31,2026-09-30,1203,True
+US_SmallRobust,US Small Robust Profitability,US,Small Blend,6_Portfolios_ME_OP_2x3_CSV.zip,SMALL HiOP,1963-07-31,2026-09-30,759,True
+US_SmallWeak,US Small Weak Profitability,US,Small Blend,6_Portfolios_ME_OP_2x3_CSV.zip,SMALL LoOP,1963-07-31,2026-09-30,759,True
+DevExUS_SmallValue,Developed ex-US Small Value,Developed ex-US,Foreign Small/Mid Value,Developed_ex_US_6_Portfolios_ME_BE-ME_CSV.zip,SMALL HiBM,1990-07-31,2026-09-30,435,True
+DevExUS_LargeValue,Developed ex-US Large Value,Developed ex-US,Foreign Large Value,Developed_ex_US_6_Portfolios_ME_BE-ME_CSV.zip,BIG HiBM,1990-07-31,2026-09-30,435,True
+DevExUS_Market,Developed ex-US Market,Developed ex-US,Foreign Large Blend,Developed_ex_US_6_Portfolios_ME_BE-ME_CSV.zip,cap-weighted six portfolios,1990-07-31,2026-09-30,435,True
+EM_SmallValue,Emerging Markets Small Value,Emerging,Diversified Emerging Mkts,Emerging_Markets_6_Portfolios_ME_BE-ME_CSV.zip,SMALL HiBM,1989-07-31,2026-09-30,447,True
+EM_LargeValue,Emerging Markets Large Value,Emerging,Diversified Emerging Mkts,Emerging_Markets_6_Portfolios_ME_BE-ME_CSV.zip,BIG HiBM,1989-07-31,2026-09-30,447,True
+EM_Market,Emerging Markets Market,Emerging,Diversified Emerging Mkts,Emerging_Markets_6_Portfolios_ME_BE-ME_CSV.zip,cap-weighted six portfolios,1989-07-31,2026-09-30,447,True
+Cash,Cash (1-month T-bill),US,Money Market-Taxable,F-F_Research_Data_Factors_CSV.zip,RF,1926-07-31,2026-09-30,1203,True
+UST_1Y,US Treasury 1-year,US,Short Government,Federal Reserve H.15 (daily),par bond from month-end 1-year CMT yield,1962-02-28,2026-09-30,776,True
+UST_5Y,US Treasury 5-year,US,Intermediate Government,Federal Reserve H.15 (daily),par bond from month-end 5-year CMT yield,1962-02-28,2026-09-30,776,True
+UST_10Y,US Treasury 10-year,US,Long Government,Federal Reserve H.15 (daily),par bond from month-end 10-year CMT yield,1962-02-28,2026-09-30,776,True
+Commodities,Commodities (equal-weight futures),Global,Commodities Broad Basket,AQR Commodities for the Long Run (monthly) + HGER (Yahoo Finance),AQR equal-weight excess return + RF; HGER total return after AQR's last month,1926-07-31,2026-09-30,1203,True
+Trend,Trend-following (AQR TSMOM),Global,Systematic Trend,"AQR Time Series Momentum: Factors, Monthly",AQR time-series momentum factor (all assets) excess return + RF,1985-01-31,2026-05-31,497,False
+Equity_LS,Equity long/short (value + momentum),US,Equity Market Neutral,F-F_Momentum_Factor_CSV.zip,"50% HML + 50% Mom (French), rebalanced monthly, + RF",1927-01-31,2026-09-30,1197,True

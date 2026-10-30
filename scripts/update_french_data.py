@@ -49,6 +49,7 @@ FILES = {
     "us_me_op": "6_Portfolios_ME_OP_2x3_CSV.zip",
     "dev_me_bm": "Developed_ex_US_6_Portfolios_ME_BE-ME_CSV.zip",
     "em_me_bm": None,  # found on the library page; see find_em_zip()
+    "mom": "F-F_Momentum_Factor_CSV.zip",
 }
 EM_ZIP_PATTERN = re.compile(r"emerging.*6_portfolios.*be-?me.*_csv\.zip$", re.I)
 
@@ -60,6 +61,8 @@ AQR_COLUMN = "Excess return of equal-weight commodities portfolio"
 # after AQR's last month. Daily dividend-adjusted closes; the last close of each month is used.
 # Yahoo downsamples range=max (and interval=1mo) to weekly bars that straddle month-ends,
 # so ask for an explicit date range. period2 is filled in at download time.
+TSMOM_URL = ("https://www.aqr.com/-/media/AQR/Documents/Insights/Data-Sets/"
+             "Time-Series-Momentum-Factors-Monthly.xlsx")
 HGER_URL = ("https://query1.finance.yahoo.com/v8/finance/chart/HGER"
             "?period1=1640995200&period2={now}&interval=1d&events=div")
 
@@ -97,7 +100,15 @@ SLEEVES = [
     ("UST_10Y", "US Treasury 10-year", "US", "Long Government", "h15", "par bond from month-end 10-year CMT yield"),
     ("Commodities", "Commodities (equal-weight futures)", "Global", "Commodities Broad Basket", "aqr",
      "AQR equal-weight excess return + RF; HGER total return after AQR's last month"),
+    ("Trend", "Trend-following (AQR TSMOM)", "Global", "Systematic Trend", "tsmom",
+     "AQR time-series momentum factor (all assets) excess return + RF"),
+    ("Equity_LS", "Equity long/short (value + momentum)", "US", "Equity Market Neutral", "mom",
+     "50% HML + 50% Mom (French), rebalanced monthly, + RF"),
 ]
+
+# Sleeves the app leaves unticked until you tick them (their data ends early, so ticking
+# them would cut the shared window short).
+DEFAULT_OFF = {"Trend"}
 
 WINDOWS = [
     ("Full", None, None),
@@ -410,7 +421,7 @@ def build_sleeves(csvs: dict[str, Path]) -> tuple[pd.DataFrame, dict]:
         "DevExUS_SmallValue": dev["vw_annual"]["SMALL HiBM"], "DevExUS_LargeValue": dev["vw_annual"]["BIG HiBM"],
         "EM_SmallValue": em["vw_annual"]["SMALL HiBM"], "EM_LargeValue": em["vw_annual"]["BIG HiBM"],
     }
-    extras = {"rf": ff3_m["RF"], "ff5": ff5_m, "annual_french": annual_french, "lag_check": lag_check,
+    extras = {"rf": ff3_m["RF"], "ff3_m": ff3_m, "ff5": ff5_m, "annual_french": annual_french, "lag_check": lag_check,
               "lag": lag, "ff3_annual": ff3_a}
     return sleeves, extras
 
@@ -507,6 +518,7 @@ def build_bonds(path: Path) -> tuple[dict[str, pd.Series], list[dict]]:
 EXTERNAL_SOURCES = {
     "h15": "Federal Reserve H.15 (daily)",
     "aqr": "AQR Commodities for the Long Run (monthly) + HGER (Yahoo Finance)",
+    "tsmom": "AQR Time Series Momentum: Factors, Monthly",
 }
 
 
@@ -600,6 +612,44 @@ def splice_check(table: pd.DataFrame) -> pd.DataFrame:
             ("mean difference (ann.)", d.mean() * 12)]
     rows += [(f"{y} AQR / HGER", f"{a:.1%} / {h:.1%}") for y, (a, h) in yr.iterrows()]
     return pd.DataFrame(rows, columns=["item", "value"]).set_index("item")
+
+
+# --------------------------------------------------------------------------- hedge-strategy proxies
+
+
+def read_tsmom(path: Path) -> pd.DataFrame:
+    """AQR's time-series momentum factors (excess returns): TSMOM and the CM/EQ/FI/FX legs."""
+    raw = pd.read_excel(path, header=None)
+    hdr = next(i for i, row in raw.iterrows() if "TSMOM^CM" in list(row.values))
+    cols = [c for c in raw.iloc[hdr] if isinstance(c, str) and c.startswith("TSMOM")]
+    data = raw.iloc[hdr + 1:, : 1 + len(cols)].dropna()
+    data.columns = ["date"] + cols
+    data["date"] = pd.to_datetime(data["date"].astype(str).str[:10]) + pd.offsets.MonthEnd(0)
+    return data.set_index("date").astype(float)
+
+
+def build_hedge_proxies(csvs: dict[str, Path], ff3_m: pd.DataFrame, skip: bool) -> tuple[dict, list[dict]]:
+    """Trend = AQR TSMOM + RF (1985+). Equity_LS = 50% HML + 50% Mom + RF (1927+).
+
+    Both are paper long/short portfolios: no fees, trading or shorting costs.
+    """
+    rf = ff3_m["RF"]
+    tsmom_path = _download(TSMOM_URL, AQR_DIR / "Time-Series-Momentum-Factors-Monthly.xlsx", skip,
+                           lambda b: b.startswith(b"PK"))
+    tsmom = read_tsmom(tsmom_path)
+    mom_block = next(b for b in split_blocks(csvs["mom"]) if b.freq == "M")
+    mom = mom_block.returns().iloc[:, 0]
+    out = {
+        "Trend": (tsmom["TSMOM"] + rf).dropna(),
+        "Equity_LS": (0.5 * ff3_m["HML"] + 0.5 * mom + rf).dropna(),
+    }
+    last = tsmom.index[-1]
+    log(f"  Trend (AQR TSMOM): {tsmom.index[0]:%Y-%m} to {last:%Y-%m}; "
+        f"Equity_LS (HML + Mom): {out['Equity_LS'].index[0]:%Y-%m} to {out['Equity_LS'].index[-1]:%Y-%m}")
+    cuts = [{"file": "AQR Time Series Momentum: Factors, Monthly", "csv": tsmom_path.name,
+             "first_line": f"data through {last:%Y-%m}", "data_cut": f"{last:%Y%m}",
+             "processed_at": dt.datetime.now().isoformat(timespec="seconds")}]
+    return out, cuts
 
 
 # --------------------------------------------------------------------------- stats
@@ -818,6 +868,7 @@ def metadata(sleeves: pd.DataFrame, zips: dict[str, Path]) -> pd.DataFrame:
             "start_date": f"{s.first_valid_index():%Y-%m-%d}" if s.notna().any() else "",
             "end_date": f"{s.last_valid_index():%Y-%m-%d}" if s.notna().any() else "",
             "months": int(s.notna().sum()),
+            "default_on": sid not in DEFAULT_OFF,
         })
     return pd.DataFrame(rows)
 
@@ -847,7 +898,11 @@ def main() -> int:
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     log("Commodities (AQR + HGER):")
     commodities, splice, com_cuts = build_commodities(x["rf"], args.skip_download)
-    sleeves = sleeves.join(commodities.rename("Commodities"), how="outer")[[sid for sid, *_ in SLEEVES]]
+    log("Hedge-strategy proxies (AQR trend, French value + momentum):")
+    proxies, proxy_cuts = build_hedge_proxies(csvs, x["ff3_m"], args.skip_download)
+    com_cuts += proxy_cuts
+    sleeves = sleeves.join([commodities.rename("Commodities"), pd.DataFrame(proxies)], how="outer")
+    sleeves = sleeves[[sid for sid, *_ in SLEEVES]]
     splice.to_csv(OUT_DIR / "commodities_splice.csv", date_format="%Y-%m-%d", float_format="%.6f")
     cuts = pd.concat([cuts, pd.DataFrame(bond_cuts + com_cuts)], ignore_index=True)
     rf = x["rf"]
