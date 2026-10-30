@@ -63,6 +63,9 @@ AQR_COLUMN = "Excess return of equal-weight commodities portfolio"
 # so ask for an explicit date range. period2 is filled in at download time.
 TSMOM_URL = ("https://www.aqr.com/-/media/AQR/Documents/Insights/Data-Sets/"
              "Time-Series-Momentum-Factors-Monthly.xlsx")
+# AQMIX (AQR Managed Futures Strategy Fund, Class I) carries Trend forward after AQR's last month.
+AQMIX_URL = ("https://query1.finance.yahoo.com/v8/finance/chart/AQMIX"
+             "?period1=1230768000&period2={now}&interval=1d&events=div%7CcapitalGain")
 HGER_URL = ("https://query1.finance.yahoo.com/v8/finance/chart/HGER"
             "?period1=1640995200&period2={now}&interval=1d&events=div")
 
@@ -101,14 +104,14 @@ SLEEVES = [
     ("Commodities", "Commodities (equal-weight futures)", "Global", "Commodities Broad Basket", "aqr",
      "AQR equal-weight excess return + RF; HGER total return after AQR's last month"),
     ("Trend", "Trend-following (AQR TSMOM)", "Global", "Systematic Trend", "tsmom",
-     "AQR time-series momentum factor (all assets) excess return + RF"),
+     "AQR time-series momentum factor (all assets) excess return + RF; AQMIX total return after AQR's last month"),
     ("Equity_LS", "Equity long/short (value + momentum)", "US", "Equity Market Neutral", "mom",
      "50% HML + 50% Mom (French), rebalanced monthly, + RF"),
 ]
 
-# Sleeves the app leaves unticked until you tick them (their data ends early, so ticking
-# them would cut the shared window short).
-DEFAULT_OFF = {"Trend"}
+# Sleeves the app leaves unticked until you tick them (e.g. data that ends early, which would
+# cut the shared window short). Empty for now; the mechanism stays for future sleeves.
+DEFAULT_OFF: set[str] = set()
 
 WINDOWS = [
     ("Full", None, None),
@@ -518,7 +521,7 @@ def build_bonds(path: Path) -> tuple[dict[str, pd.Series], list[dict]]:
 EXTERNAL_SOURCES = {
     "h15": "Federal Reserve H.15 (daily)",
     "aqr": "AQR Commodities for the Long Run (monthly) + HGER (Yahoo Finance)",
-    "tsmom": "AQR Time Series Momentum: Factors, Monthly",
+    "tsmom": "AQR Time Series Momentum: Factors, Monthly + AQMIX (Yahoo Finance)",
 }
 
 
@@ -550,8 +553,9 @@ def read_aqr(path: Path) -> pd.Series:
     return pd.Series(data.iloc[:, 1].astype(float).values, index=pd.DatetimeIndex(dates)).sort_index()
 
 
-def read_hger(path: Path) -> pd.Series:
-    """HGER monthly total returns: last dividend-adjusted daily close of each month (complete months only)."""
+def read_yahoo_monthly(path: Path) -> pd.Series:
+    """Monthly total returns from Yahoo daily data: last dividend-adjusted close of each month
+    (complete months only). Used for HGER and AQMIX."""
     res = json.loads(path.read_text())["chart"]["result"][0]
     gmt = res.get("meta", {}).get("gmtoffset", 0)  # exchange-local dates, not UTC
     ts = pd.to_datetime(np.asarray(res["timestamp"]) + gmt, unit="s")
@@ -575,7 +579,7 @@ def build_commodities(rf: pd.Series, skip: bool) -> tuple[pd.Series, pd.DataFram
     try:
         hger_path = _download(HGER_URL.format(now=int(time.time())), AQR_DIR / "HGER_yahoo_daily.json", skip,
                               lambda b: b'"adjclose"' in b)
-        hger = read_hger(hger_path)
+        hger = read_yahoo_monthly(hger_path)
     except Exception as exc:  # keep the rest of the refresh going; the sleeve just ends with AQR
         log(f"  WARNING: HGER unavailable ({exc}); Commodities ends at AQR's last month")
         hger_path = AQR_DIR / "HGER_yahoo_daily.json"
@@ -600,17 +604,18 @@ def build_commodities(rf: pd.Series, skip: bool) -> tuple[pd.Series, pd.DataFram
     return sleeve, table, cuts
 
 
-def splice_check(table: pd.DataFrame) -> pd.DataFrame:
-    """How closely HGER tracked AQR's index over the months both exist."""
-    both = table[["aqr_total", "hger_total"]].dropna()
+def splice_check(table: pd.DataFrame, a: str = "aqr_total", b: str = "hger_total",
+                 label: str = "AQR / HGER") -> pd.DataFrame:
+    """How closely the follow-on fund tracked the index it continues, over the months both exist."""
+    both = table[[a, b]].dropna()
     if len(both) < 12:
         return pd.DataFrame({"note": [f"only {len(both)} overlapping months"]})
-    d = both["hger_total"] - both["aqr_total"]
+    d = both[b] - both[a]
     yr = (1 + both).groupby(both.index.year).prod() - 1
     rows = [("overlap", f"{both.index[0]:%Y-%m} to {both.index[-1]:%Y-%m}"), ("months", len(both)),
             ("correlation", both.corr().iloc[0, 1]), ("tracking error (ann.)", d.std() * np.sqrt(12)),
             ("mean difference (ann.)", d.mean() * 12)]
-    rows += [(f"{y} AQR / HGER", f"{a:.1%} / {h:.1%}") for y, (a, h) in yr.iterrows()]
+    rows += [(f"{y} {label}", f"{x:.1%} / {z:.1%}") for y, (x, z) in yr.iterrows()]
     return pd.DataFrame(rows, columns=["item", "value"]).set_index("item")
 
 
@@ -628,8 +633,8 @@ def read_tsmom(path: Path) -> pd.DataFrame:
     return data.set_index("date").astype(float)
 
 
-def build_hedge_proxies(csvs: dict[str, Path], ff3_m: pd.DataFrame, skip: bool) -> tuple[dict, list[dict]]:
-    """Trend = AQR TSMOM + RF (1985+). Equity_LS = 50% HML + 50% Mom + RF (1927+).
+def build_hedge_proxies(csvs: dict[str, Path], ff3_m: pd.DataFrame, skip: bool) -> tuple[dict, pd.DataFrame, list[dict]]:
+    """Trend = AQR TSMOM + RF (1985+), then AQMIX. Equity_LS = 50% HML + 50% Mom + RF (1927+).
 
     Both are paper long/short portfolios: no fees, trading or shorting costs.
     """
@@ -639,17 +644,29 @@ def build_hedge_proxies(csvs: dict[str, Path], ff3_m: pd.DataFrame, skip: bool) 
     tsmom = read_tsmom(tsmom_path)
     mom_block = next(b for b in split_blocks(csvs["mom"]) if b.freq == "M")
     mom = mom_block.returns().iloc[:, 0]
-    out = {
-        "Trend": (tsmom["TSMOM"] + rf).dropna(),
-        "Equity_LS": (0.5 * ff3_m["HML"] + 0.5 * mom + rf).dropna(),
-    }
-    last = tsmom.index[-1]
-    log(f"  Trend (AQR TSMOM): {tsmom.index[0]:%Y-%m} to {last:%Y-%m}; "
+    factor = (tsmom["TSMOM"] + rf).dropna()
+    last = factor.index[-1]
+    try:
+        aqmix_path = _download(AQMIX_URL.format(now=int(time.time())), AQR_DIR / "AQMIX_yahoo_daily.json", skip,
+                               lambda b: b'"adjclose"' in b)
+        aqmix = read_yahoo_monthly(aqmix_path)
+    except Exception as exc:  # the sleeve just ends at AQR's last month
+        log(f"  WARNING: AQMIX unavailable ({exc}); Trend ends at AQR's last month")
+        aqmix = pd.Series(dtype=float, index=pd.DatetimeIndex([]))
+    trend = pd.concat([factor, aqmix[aqmix.index > last]])
+    table = pd.DataFrame({"return": trend, "source": np.where(trend.index <= last, "AQR TSMOM + RF", "AQMIX"),
+                          "factor_total": factor.reindex(trend.index), "fund_total": aqmix.reindex(trend.index)})
+    table.index.name = "date"
+    out = {"Trend": trend, "Equity_LS": (0.5 * ff3_m["HML"] + 0.5 * mom + rf).dropna()}
+    span = f"{aqmix.index[0]:%Y-%m} to {aqmix.index[-1]:%Y-%m}" if len(aqmix) else "not available"
+    log(f"  Trend: AQR TSMOM + RF {factor.index[0]:%Y-%m} to {last:%Y-%m}, AQMIX {span}; "
         f"Equity_LS (HML + Mom): {out['Equity_LS'].index[0]:%Y-%m} to {out['Equity_LS'].index[-1]:%Y-%m}")
+    now = dt.datetime.now().isoformat(timespec="seconds")
     cuts = [{"file": "AQR Time Series Momentum: Factors, Monthly", "csv": tsmom_path.name,
-             "first_line": f"data through {last:%Y-%m}", "data_cut": f"{last:%Y%m}",
-             "processed_at": dt.datetime.now().isoformat(timespec="seconds")}]
-    return out, cuts
+             "first_line": f"data through {last:%Y-%m}", "data_cut": f"{last:%Y%m}", "processed_at": now},
+            {"file": "AQMIX (Yahoo Finance)", "csv": "AQMIX_yahoo_daily.json", "first_line": span,
+             "data_cut": f"{aqmix.index[-1]:%Y%m}" if len(aqmix) else "", "processed_at": now}]
+    return out, table, cuts
 
 
 # --------------------------------------------------------------------------- stats
@@ -899,7 +916,8 @@ def main() -> int:
     log("Commodities (AQR + HGER):")
     commodities, splice, com_cuts = build_commodities(x["rf"], args.skip_download)
     log("Hedge-strategy proxies (AQR trend, French value + momentum):")
-    proxies, proxy_cuts = build_hedge_proxies(csvs, x["ff3_m"], args.skip_download)
+    proxies, trend_table, proxy_cuts = build_hedge_proxies(csvs, x["ff3_m"], args.skip_download)
+    trend_table.to_csv(OUT_DIR / "trend_splice.csv", date_format="%Y-%m-%d", float_format="%.6f")
     com_cuts += proxy_cuts
     sleeves = sleeves.join([commodities.rename("Commodities"), pd.DataFrame(proxies)], how="outer")
     sleeves = sleeves[[sid for sid, *_ in SLEEVES]]
@@ -952,6 +970,7 @@ def main() -> int:
     sheets["Annual_Check"] = annual_check(cal, x["annual_french"])
     sheets["Size_Lag_Check"] = x["lag_check"].set_index("lag_months")
     sheets["Commodities_Splice"] = splice_check(splice)
+    sheets["Trend_Splice"] = splice_check(trend_table, "factor_total", "fund_total", "factor / AQMIX")
 
     d = dfat(x["ff5"])
     if d:
