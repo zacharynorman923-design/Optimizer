@@ -206,6 +206,11 @@ class Block:
     values: list[list[float]]
 
     @property
+    def heading(self) -> str:
+        """The text line directly above the column header, e.g. 'Average Firm Size'."""
+        return self.title.rsplit(" | ", 1)[-1]
+
+    @property
     def freq(self) -> str:
         return "M" if len(self.dates[0]) == 6 else "A"
 
@@ -257,13 +262,17 @@ def split_blocks(path: Path) -> list[Block]:
 
 
 def pick(blocks: list[Block], freq: str, *words: str, path: Path) -> Block:
-    """First block of the given frequency whose title contains all `words` (any of `|`-alternatives)."""
+    """First block of the given frequency whose heading contains all `words` (any of `|`-alternatives).
+
+    Matching only the heading line matters: the first block's title also carries the file
+    description, which mentions 'market cap' and 'value-weighted' in passing.
+    """
     for b in blocks:
-        t = b.title.lower()
+        t = b.heading.lower()
         if b.freq == freq and all(any(w in t for w in word.split("|")) for word in words):
             return b
     raise ValueError(f"{path.name}: no {freq} block with title containing {words}. "
-                     f"Titles: {[b.title[:60] for b in blocks]}")
+                     f"Headings: {[b.heading[:60] for b in blocks]}")
 
 
 def factor_blocks(path: Path) -> tuple[pd.DataFrame, pd.DataFrame]:

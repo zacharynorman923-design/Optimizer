@@ -54,7 +54,7 @@ converted to decimals, and `-99.99` / `-999` are treated as missing.
 
 **International market sleeves.** The international six-portfolio files have no market
 column, so the market is built from the six portfolios themselves. Each is weighted by
-"Average Firm Size × Number of Firms" from the same file. The script decides whether that
+"Average Firm Size" (called "Average Market Cap" in the US files) × "Number of Firms" from the same file. The script decides whether that
 size should be lagged a month by running the same construction on the US six portfolios
 and keeping the lag that tracks the official US market (Mkt-RF + RF) best. The result is in
 the `Size_Lag_Check` sheet. The six portfolios may not cover exactly the same stocks as French's
