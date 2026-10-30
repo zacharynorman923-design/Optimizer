@@ -65,5 +65,5 @@ export const SHORT = {
   US_SmallWeak: 'US S Weak', DevExUS_SmallValue: 'Dev SV', DevExUS_LargeValue: 'Dev LV',
   DevExUS_Market: 'Dev Mkt', EM_SmallValue: 'EM SV', EM_LargeValue: 'EM LV',
   EM_Market: 'EM Mkt', Cash: 'Cash',
-  UST_1Y: 'UST 1Y', UST_5Y: 'UST 5Y', UST_10Y: 'UST 10Y', Commodities: 'Cmdty',
+  UST_1Y: 'UST 1Y', UST_5Y: 'UST 5Y', UST_10Y: 'UST 10Y', Commodities: 'Cmdty', Gold: 'Gold',
 };
