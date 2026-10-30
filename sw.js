@@ -1,6 +1,6 @@
 /* Optimizer service worker — offline app shell + return data.
    Bump VERSION on every release so clients discard the old cached shell. */
-const VERSION = 'optimizer-v2';
+const VERSION = 'optimizer-v3';
 const SHELL = `${VERSION}-shell`;
 const RUNTIME = `${VERSION}-runtime`;
 

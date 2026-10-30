@@ -21,6 +21,8 @@ All files come from the [Kenneth R. French Data Library](https://mba.tuck.dartmo
 |---|---|
 | `F-F_Research_Data_Factors_CSV.zip` | Mkt-RF and RF (US market, cash) |
 | `F-F_Research_Data_5_Factors_2x3_CSV.zip` | 5 factors for the DFAT regression |
+| AQR "Commodities for the Long Run: Index Level Data, Monthly" ([page](https://www.aqr.com/Insights/Datasets/Commodities-for-the-Long-Run-Index-Level-Data-Monthly)) | Commodity futures returns through AQR's last month |
+| HGER (Harbor Commodity All-Weather Strategy ETF), daily dividend-adjusted closes from Yahoo Finance | Commodity returns after AQR's last month |
 | Federal Reserve H.15, daily Treasury constant-maturity yields ([download page](https://www.federalreserve.gov/datadownload/Choose.aspx?rel=H15)) | Yields for the Treasury sleeves |
 | `6_Portfolios_2x3_CSV.zip` | US size × book-to-market portfolios |
 | `6_Portfolios_ME_OP_2x3_CSV.zip` | US size × operating-profitability portfolios |
@@ -50,6 +52,7 @@ Each sleeve keeps its own start date: earlier months are blank, not truncated.
 | EM_SmallValue / LargeValue / Market | Same as Developed, from the EM file | Diversified Emerging Mkts |
 | Cash | RF (1-month T-bill) | Money Market-Taxable |
 
+| Commodities | AQR equal-weight commodity futures excess return + RF; HGER total return after AQR's last month | Commodities Broad Basket |
 | UST_1Y / UST_5Y / UST_10Y | H.15 1-, 5- and 10-year constant-maturity yields, built into total returns (see below) | Short / Intermediate / Long Government |
 
 All six portfolio sleeves use French's **value-weighted** returns. Percentages are
@@ -79,6 +82,28 @@ directly because FRED refuses connections from the cloud environment this was bu
 - Corporate bonds aren't included yet. Moody's Aaa yields are only on FRED (the Fed dropped
   them from H.15 in 2016).
 
+**Commodities (AQR + HGER).** Two sources joined end to end:
+- **Through AQR's last month:** the equal-weight commodity futures portfolio from Levine, Ooi,
+  Richardson & Sasseville, "Commodities for the Long Run" (*Financial Analysts Journal*, 2018),
+  in AQR's updated dataset. AQR publishes returns in excess of T-bills, so the sleeve adds RF
+  (the Cash sleeve), the same way US Market is Mkt-RF + RF. It starts in 1926-07, when RF
+  begins, although AQR's data goes back to 1877. AQR's page says the file is updated monthly,
+  but as of October 2026 its data ends in May 2025.
+- **After that:** HGER's monthly total return, from the last dividend-adjusted daily close of
+  each month on Yahoo Finance. HGER holds T-bills as collateral, so its return is on the same
+  footing as AQR + RF. When AQR updates again, the switch-over moves later on its own.
+- **How well they match:** over March 2022 to May 2025, HGER's monthly returns correlated
+  0.86 with AQR + RF, with 6.2% a year tracking error and similar volatility (11.8% vs 11.7%).
+  HGER returned about 3.4% a year more over that stretch, despite its 0.68% expense ratio.
+  They follow different index rules, so months after the switch reflect HGER's index rather
+  than a continuation of AQR's.
+- **Fees:** the HGER months are actual fund returns, net of fees. The AQR months are a paper
+  portfolio with no costs, like French's data.
+- `commodities_splice.csv` shows both series side by side with the source of each month.
+  The `Commodities_Splice` sheet in `stats.xlsx` holds the overlap statistics.
+- AQR's disclosures: information purposes only, not investment advice, no warranty. The
+  dataset is © 2018 Levine, Ooi, Richardson and Sasseville.
+
 ## Outputs (`data/processed/`)
 
 | File | Contents |
@@ -87,6 +112,7 @@ directly because FRED refuses connections from the cloud environment this was bu
 | `sleeves_annual.csv` | `year` + one column per sleeve; compounded monthly returns, complete calendar years only |
 | `sleeve_metadata.csv` | `sleeve, name, region, morningstar_category, source_file, source_column, start_date, end_date, months` |
 | `optimizer_returns.json` | The three files above in one bundle for the React app (blank months are `null`) |
+| `commodities_splice.csv` | The commodity sleeve with AQR and HGER side by side and the source of each month |
 | `stats.xlsx` | One sheet per item, listed below |
 | `dfat_extended.csv`, `dfat_regression.csv`, `dfat_synthetic_vs_actual.png` | Only when DFAT returns are provided |
 
@@ -98,6 +124,7 @@ directly because FRED refuses connections from the cloud environment this was bu
 - **Rolling10y_SV_vs_LC**: rolling 120-month annualized returns of US_SmallValue and US_LargeCap and their difference.
 - **Annual_Check**: compounded monthly returns compared with French's own annual blocks. Differences should be rounding-sized (a few hundredths of a percent).
 - **Size_Lag_Check**: see the international market sleeves above.
+- **Commodities_Splice**: how closely HGER tracked AQR over the months both exist.
 
 Sharpe = annualized mean monthly excess return over RF ÷ annualized standard deviation of
 excess returns (arithmetic, ×12 and ×√12).

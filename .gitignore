@@ -1,3 +1,6 @@
 __pycache__/
 *.pyc
 node_modules/
+
+# third-party raw files: re-downloaded by scripts/update_french_data.py, not redistributed
+data/raw/aqr/

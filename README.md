@@ -2,7 +2,7 @@
 
 A dependency-free web app for **mean-variance portfolio optimization** on Ken
 French's research portfolios: US size/value/profitability, developed ex-US and
-emerging markets, cash and US Treasuries, with history back to 1926. Pick sleeves and limits,
+emerging markets, cash, US Treasuries and commodities, with history back to 1926. Pick sleeves and limits,
 see the **efficient frontier**, and backtest the result **year by year** against
 a benchmark.
 
@@ -13,7 +13,7 @@ modules. Installable as a PWA, and it works offline once loaded.
 
 ## What it does
 
-- **Sleeves.** All 17 are on by default. Tick any subset and set a **minimum and maximum weight** for each.
+- **Sleeves.** All 18 are on by default. Tick any subset and set a **minimum and maximum weight** for each.
   Presets: *All*, *US to 1926* (the five US style sleeves plus cash, 100 years of history) and *None*.
 - **All the history there is.** The window defaults to the longest stretch every ticked sleeve
   covers. The app names the sleeves that set the start date and says how far back you'd get
@@ -68,7 +68,9 @@ The return series are built by `scripts/update_french_data.py`. The equity sleev
 cash come from the
 [Ken French Data Library](https://mba.tuck.dartmouth.edu/pages/faculty/Ken.French/data_library.html).
 The 1-, 5- and 10-year Treasury sleeves (from 1962) are total returns rebuilt from the
-Federal Reserve's H.15 constant-maturity yields.
+Federal Reserve's H.15 constant-maturity yields. Commodities are AQR's long-run
+commodity-futures index plus T-bills, continued with the HGER ETF after AQR's data ends
+(May 2025 at present).
 
 To refresh when French posts new data:
 
@@ -116,6 +118,9 @@ publishes it. Any static host works too, with no build command and `/` as the pu
 - **Treasury returns are rebuilt from yields**, so they are close to, not identical to, index
   returns. They are within about 1–2 points a year of published figures, with larger gaps in
   years of big rate moves.
+- **Commodities join two sources.** AQR's paper index runs through May 2025, and HGER's
+  actual net-of-fee returns follow. They correlated 0.86 where both exist, but they follow
+  different index rules.
 - **Max Sharpe likes short bonds.** With Treasuries ticked it usually loads up on the 1-year
   note, which is low-risk and had a high Sharpe ratio while rates fell. For a usable mix, try
   *Max return at a volatility* or cap the bond weights.

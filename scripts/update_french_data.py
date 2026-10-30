@@ -57,8 +57,11 @@ AQR_URL = ("https://www.aqr.com/-/media/AQR/Documents/Insights/Data-Sets/"
            "Commodities-for-the-Long-Run-Index-Level-Data-Monthly.xlsx")
 AQR_COLUMN = "Excess return of equal-weight commodities portfolio"
 # HGER (Harbor Commodity All-Weather Strategy ETF) carries the commodity sleeve forward
-# after AQR's last month. Monthly bars with dividend-adjusted closes.
-HGER_URL = "https://query1.finance.yahoo.com/v8/finance/chart/HGER?range=max&interval=1mo&events=div"
+# after AQR's last month. Daily dividend-adjusted closes; the last close of each month is used.
+# Yahoo downsamples range=max (and interval=1mo) to weekly bars that straddle month-ends,
+# so ask for an explicit date range. period2 is filled in at download time.
+HGER_URL = ("https://query1.finance.yahoo.com/v8/finance/chart/HGER"
+            "?period1=1640995200&period2={now}&interval=1d&events=div")
 
 H15_DIR = ROOT / "data" / "raw" / "h15"
 H15_PAGE = "https://www.federalreserve.gov/datadownload/Choose.aspx?rel=H15"
@@ -536,12 +539,15 @@ def read_aqr(path: Path) -> pd.Series:
 
 
 def read_hger(path: Path) -> pd.Series:
-    """HGER monthly total returns from Yahoo's dividend-adjusted closes (complete months only)."""
+    """HGER monthly total returns: last dividend-adjusted daily close of each month (complete months only)."""
     res = json.loads(path.read_text())["chart"]["result"][0]
-    ts = pd.to_datetime(res["timestamp"], unit="s")
+    gmt = res.get("meta", {}).get("gmtoffset", 0)  # exchange-local dates, not UTC
+    ts = pd.to_datetime(np.asarray(res["timestamp"]) + gmt, unit="s")
     adj = pd.Series(res["indicators"]["adjclose"][0]["adjclose"], index=ts, dtype=float).dropna()
-    adj.index = adj.index.to_period("M").to_timestamp() + pd.offsets.MonthEnd(0)
-    adj = adj[~adj.index.duplicated(keep="last")]
+    if pd.Series(adj.index).diff().median() > pd.Timedelta(days=3):
+        raise ValueError("Yahoo returned weekly or monthly bars, not daily closes")
+    adj = adj.groupby(adj.index.to_period("M")).last()
+    adj.index = adj.index.to_timestamp() + pd.offsets.MonthEnd(0)
     this_month = pd.Timestamp.today().to_period("M").to_timestamp()
     return adj.pct_change().dropna()[lambda r: r.index < this_month]
 
@@ -555,12 +561,12 @@ def build_commodities(rf: pd.Series, skip: bool) -> tuple[pd.Series, pd.DataFram
                          skip, lambda b: b.startswith(b"PK"))
     aqr_total = (read_aqr(aqr_path) + rf).dropna()  # RF (French) starts 1926-07
     try:
-        hger_path = _download(HGER_URL, AQR_DIR / "HGER_yahoo_monthly.json", skip,
+        hger_path = _download(HGER_URL.format(now=int(time.time())), AQR_DIR / "HGER_yahoo_daily.json", skip,
                               lambda b: b'"adjclose"' in b)
         hger = read_hger(hger_path)
     except Exception as exc:  # keep the rest of the refresh going; the sleeve just ends with AQR
         log(f"  WARNING: HGER unavailable ({exc}); Commodities ends at AQR's last month")
-        hger_path = AQR_DIR / "HGER_yahoo_monthly.json"
+        hger_path = AQR_DIR / "HGER_yahoo_daily.json"
         hger = pd.Series(dtype=float, index=pd.DatetimeIndex([]))
     last_aqr = aqr_total.index[-1]
     sleeve = pd.concat([aqr_total, hger[hger.index > last_aqr]])
@@ -838,7 +844,6 @@ def main() -> int:
     bonds, bond_cuts = build_bonds(fetch_h15(args.skip_download))
     # month-end on the French grid; bond months after French's last month are kept too
     sleeves = sleeves.join(pd.DataFrame(bonds), how="outer")
-    sleeves = sleeves[[sid for sid, *_ in SLEEVES]]
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     log("Commodities (AQR + HGER):")
     commodities, splice, com_cuts = build_commodities(x["rf"], args.skip_download)
