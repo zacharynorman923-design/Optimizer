@@ -14,7 +14,7 @@ const pct = C.pct;
 const ym = (iso) => iso.slice(0, 7);
 
 const KEY = 'optimizer-state-v1', THEME_KEY = 'optimizer-theme';
-const US_1926 = ['US_LargeCap', 'US_SmallValue', 'US_SmallGrowth', 'US_LargeValue', 'US_LargeGrowth', 'Corp_AAA', 'Cash'];
+const US_1926 = ['US_LargeCap', 'US_SmallValue', 'US_SmallGrowth', 'US_LargeValue', 'US_LargeGrowth', 'Cash'];
 const OBJECTIVES = {
   maxSharpe: 'Max Sharpe', minVar: 'Min volatility', targetVol: 'Max return at a volatility',
   targetRet: 'Min volatility for a return', equal: 'Equal weight', custom: 'My own weights',

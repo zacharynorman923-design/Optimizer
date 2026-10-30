@@ -52,17 +52,14 @@ FILES = {
 }
 EM_ZIP_PATTERN = re.compile(r"emerging.*6_portfolios.*be-?me.*_csv\.zip$", re.I)
 
-FRED_DIR = ROOT / "data" / "raw" / "fred"
-FRED_URL = "https://fred.stlouisfed.org/graph/fredgraph.csv?id={}"
+H15_DIR = ROOT / "data" / "raw" / "h15"
+H15_PAGE = "https://www.federalreserve.gov/datadownload/Choose.aspx?rel=H15"
 
-# (sleeve, FRED series, assumed maturity in years, yield is a month-end daily close?)
-# Treasuries use the month-end value of the daily constant-maturity yield. Moody's Aaa
-# uses the monthly-average series, the only one going back to 1919 (see bond_returns()).
+# (sleeve, H.15 series in the daily Treasury constant-maturity package, maturity in years)
 BONDS = [
-    ("UST_1Y", "DGS1", 1, True),
-    ("UST_5Y", "DGS5", 5, True),
-    ("UST_10Y", "DGS10", 10, True),
-    ("Corp_AAA", "AAA", 20, False),
+    ("UST_1Y", "RIFLGFCY01_N.B", 1),
+    ("UST_5Y", "RIFLGFCY05_N.B", 5),
+    ("UST_10Y", "RIFLGFCY10_N.B", 10),
 ]
 
 # French's missing-value markers.
@@ -84,10 +81,9 @@ SLEEVES = [
     ("EM_LargeValue", "Emerging Markets Large Value", "Emerging", "Diversified Emerging Mkts", "em_me_bm", "BIG HiBM"),
     ("EM_Market", "Emerging Markets Market", "Emerging", "Diversified Emerging Mkts", "em_me_bm", "cap-weighted six portfolios"),
     ("Cash", "Cash (1-month T-bill)", "US", "Money Market-Taxable", "ff3", "RF"),
-    ("UST_1Y", "US Treasury 1-year", "US", "Short Government", "DGS1", "par bond from month-end yield"),
-    ("UST_5Y", "US Treasury 5-year", "US", "Intermediate Government", "DGS5", "par bond from month-end yield"),
-    ("UST_10Y", "US Treasury 10-year", "US", "Long Government", "DGS10", "par bond from month-end yield"),
-    ("Corp_AAA", "US Corporate Aaa (Moody's)", "US", "Long-Term Bond", "AAA", "20-year par bond from monthly-average yield"),
+    ("UST_1Y", "US Treasury 1-year", "US", "Short Government", "h15", "par bond from month-end 1-year CMT yield"),
+    ("UST_5Y", "US Treasury 5-year", "US", "Intermediate Government", "h15", "par bond from month-end 5-year CMT yield"),
+    ("UST_10Y", "US Treasury 10-year", "US", "Long Government", "h15", "par bond from month-end 10-year CMT yield"),
 ]
 
 WINDOWS = [
@@ -406,48 +402,52 @@ def build_sleeves(csvs: dict[str, Path]) -> tuple[pd.DataFrame, dict]:
     return sleeves, extras
 
 
-# --------------------------------------------------------------------------- FRED bonds
+# --------------------------------------------------------------------------- Treasury bonds (H.15)
 
 
-def fetch_fred(skip_download: bool) -> dict[str, Path]:
-    """Download each FRED series in BONDS to data/raw/fred/<id>.csv (or reuse it)."""
-    FRED_DIR.mkdir(parents=True, exist_ok=True)
-    paths = {sid: FRED_DIR / f"{sid}.csv" for _, sid, _, _ in BONDS}
+def fetch_h15(skip_download: bool) -> Path:
+    """Download the Fed's H.15 daily Treasury constant-maturity package to data/raw/h15/.
+
+    The package link is read from the H.15 download page each time (the full-history daily
+    package is the one with no observation limit), so a changed link doesn't break the refresh.
+    """
+    H15_DIR.mkdir(parents=True, exist_ok=True)
+    path = H15_DIR / "H15_treasury_constant_maturity_daily.csv"
     if skip_download:
-        missing = [p for p in paths.values() if not p.exists()]
-        if missing:
-            raise FileNotFoundError(f"Missing {missing[0]}; run without --skip-download")
-        return paths
+        if not path.exists():
+            raise FileNotFoundError(f"Missing {path}; run without --skip-download")
+        return path
+    import html as htmllib
     import requests
 
     session = requests.Session()
     session.headers["User-Agent"] = USER_AGENT
-    for sid, path in paths.items():
-        url = FRED_URL.format(sid)
-        log(f"Downloading {url}")
-        text = http_get(session, url).text
-        if not text.lower().startswith(("observation_date", "date")):
-            raise RuntimeError(f"{url} did not return a FRED CSV")
-        path.write_text(text)
-    return paths
+    page = http_get(session, H15_PAGE).text
+    opts = [htmllib.unescape(v) for v in re.findall(r'value="(rel=H15[^"]*type=package)"', page)]
+    full = [o for o in opts if "lastobs=&" in o]
+    if not full:
+        raise RuntimeError(f"No full-history H.15 package link found on {H15_PAGE}")
+    url = "https://www.federalreserve.gov/datadownload/Output.aspx?" + full[0]
+    log(f"Downloading {url}")
+    text = http_get(session, url).text
+    if "RIFLGFCY10_N.B" not in text:
+        raise RuntimeError(f"{url} is not the daily Treasury constant-maturity package")
+    path.write_text(text)
+    return path
 
 
-def read_fred(path: Path) -> pd.Series:
-    """A FRED CSV as a float series in percent; FRED marks missing values with '.'."""
-    df = pd.read_csv(path)
-    s = pd.to_numeric(df.iloc[:, 1], errors="coerce")
-    s.index = pd.to_datetime(df.iloc[:, 0])
-    return s.dropna()
+def read_h15(path: Path) -> pd.DataFrame:
+    """The H.15 package as floats in percent. Six label rows precede the data; 'ND' = no data."""
+    df = pd.read_csv(path, skiprows=5, index_col=0)
+    df.index = pd.to_datetime(df.index)
+    return df.apply(pd.to_numeric, errors="coerce")
 
 
-def to_monthly(s: pd.Series, month_end: bool) -> pd.Series:
-    """Month-end-indexed yields: the last daily close of each month, or the monthly value as is."""
-    if month_end:
-        s = s.groupby(s.index.to_period("M")).last()
-        s.index = s.index.to_timestamp() + pd.offsets.MonthEnd(0)
-    else:
-        s = s.copy()
-        s.index = s.index + pd.offsets.MonthEnd(0)
+def month_end_yields(s: pd.Series) -> pd.Series:
+    """The last daily close of each month, indexed at month-end."""
+    s = s.dropna()
+    s = s.groupby(s.index.to_period("M")).last()
+    s.index = s.index.to_timestamp() + pd.offsets.MonthEnd(0)
     return s
 
 
@@ -473,17 +473,19 @@ def bond_returns(yields_pct: pd.Series, maturity: float) -> pd.Series:
     return (price - 1 + c / 12).rename(None)
 
 
-def build_bonds(paths: dict[str, Path]) -> tuple[dict[str, pd.Series], list[dict]]:
-    out, cuts = {}, []
-    for sleeve, sid, maturity, month_end in BONDS:
-        raw = read_fred(paths[sid])
-        r = bond_returns(to_monthly(raw, month_end), maturity).dropna()
-        out[sleeve] = r[r.index < pd.Timestamp.today().to_period("M").to_timestamp()]  # complete months only
-        cuts.append({"file": f"FRED {sid}", "csv": paths[sid].name,
-                     "first_line": f"{sid}: {raw.index[0]:%Y-%m-%d} to {raw.index[-1]:%Y-%m-%d}",
-                     "data_cut": f"{raw.index[-1]:%Y%m%d}",
-                     "processed_at": dt.datetime.now().isoformat(timespec="seconds")})
-        log(f"  FRED {sid}: through {raw.index[-1]:%Y-%m-%d}")
+def build_bonds(path: Path) -> tuple[dict[str, pd.Series], list[dict]]:
+    h15 = read_h15(path)
+    this_month = pd.Timestamp.today().to_period("M").to_timestamp()
+    out = {}
+    for sleeve, sid, maturity in BONDS:
+        r = bond_returns(month_end_yields(h15[sid]), maturity).dropna()
+        out[sleeve] = r[r.index < this_month]  # complete months only
+    last = h15[[sid for _, sid, _ in BONDS]].dropna().index[-1]
+    log(f"  H.15 Treasury yields: {h15.index[0]:%Y-%m-%d} to {last:%Y-%m-%d}")
+    cuts = [{"file": "Federal Reserve H.15 (daily Treasury CMT)", "csv": path.name,
+             "first_line": f"{h15.index[0]:%Y-%m-%d} to {last:%Y-%m-%d}",
+             "data_cut": f"{last:%Y%m%d}",
+             "processed_at": dt.datetime.now().isoformat(timespec="seconds")}]
     return out, cuts
 
 
@@ -699,7 +701,7 @@ def metadata(sleeves: pd.DataFrame, zips: dict[str, Path]) -> pd.DataFrame:
         s = sleeves[sid]
         rows.append({
             "sleeve": sid, "name": name, "region": region, "morningstar_category": cat,
-            "source_file": zips[key].name if key in zips else f"FRED {key}", "source_column": col,
+            "source_file": zips[key].name if key in zips else "Federal Reserve H.15 (daily)", "source_column": col,
             "start_date": f"{s.first_valid_index():%Y-%m-%d}" if s.notna().any() else "",
             "end_date": f"{s.last_valid_index():%Y-%m-%d}" if s.notna().any() else "",
             "months": int(s.notna().sum()),
@@ -725,12 +727,12 @@ def main() -> int:
     cuts = log_data_cuts(csvs, zips)
 
     sleeves, x = build_sleeves(csvs)
-    log("FRED yields:")
-    bonds, fred_cuts = build_bonds(fetch_fred(args.skip_download))
+    log("Treasury yields (Federal Reserve H.15):")
+    bonds, bond_cuts = build_bonds(fetch_h15(args.skip_download))
     # month-end on the French grid; bond months after French's last month are kept too
     sleeves = sleeves.join(pd.DataFrame(bonds), how="outer")
     sleeves = sleeves[[sid for sid, *_ in SLEEVES]]
-    cuts = pd.concat([cuts, pd.DataFrame(fred_cuts)], ignore_index=True)
+    cuts = pd.concat([cuts, pd.DataFrame(bond_cuts)], ignore_index=True)
     rf = x["rf"]
     OUT_DIR.mkdir(parents=True, exist_ok=True)
 
