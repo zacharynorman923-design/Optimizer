@@ -56,7 +56,7 @@ Each sleeve keeps its own start date: earlier months are blank, not truncated.
 | Cash | RF (1-month T-bill) | Money Market-Taxable |
 
 | Commodities | AQR equal-weight commodity futures excess return + RF; HGER total return after AQR's last month | Commodities Broad Basket |
-| Trend | AQR time-series momentum factor (all assets) + RF; AQMIX total return after AQR's last month | Systematic Trend |
+| Trend | AQR time-series momentum factor (all assets) + RF through 2025; AQMIX total return from January 2026 | Systematic Trend |
 | Equity_LS | 50% HML + 50% Mom (French), rebalanced monthly, + RF | Equity Market Neutral |
 | UST_1Y / UST_5Y / UST_10Y | H.15 1-, 5- and 10-year constant-maturity yields, built into total returns (see below) | Short / Intermediate / Long Government |
 
@@ -117,8 +117,10 @@ built from academic long/short factors:
   long or short 58 futures and forwards (equity indexes, bonds, currencies, commodities)
   according to their past 12-month return. AQR publishes it as an excess return, so RF is
   added. It runs from 1985-01 to AQR's latest month, which is usually a few months behind
-  French. After that the sleeve continues with **AQMIX**, AQR's own managed-futures mutual
-  fund, using its actual monthly returns after fees (from Yahoo, distributions reinvested).
+  French. From **January 2026** (`TREND_FUND_FROM` in the script) the sleeve uses **AQMIX**, AQR's
+  own managed-futures mutual fund: its actual monthly returns after fees, from Yahoo with
+  distributions reinvested. That way the current year matches the real fund. Earlier months stay on
+  the factor, and if AQR's data ever ends before that date, AQMIX fills from AQR's last month.
   - **How well they match:** over 2010-02 to 2026-05 the fund correlated 0.76 with the
     factor, with 8.5% a year tracking error.
   - **What fees and costs took:** the fund returned 4.8% a year against the factor's 6.9%,
@@ -133,8 +135,7 @@ built from academic long/short factors:
   about zero correlation to stocks. Equity_LS's correlation with stocks is −0.29, and it
   shows momentum's 2009 crash (−29.6%).
 - **These are paper returns, before any fees, trading costs or the cost of shorting.**
-  - **Trend is the most overstated.** (The AQMIX months at the end are the exception: they're
-    real fund returns after fees.) It shows 15.7% a year since 1985 at a Sharpe of 0.98.
+  - **Trend is the most overstated.** (2026 is the exception: it's AQMIX's real return after fees.) It shows 15.7% a year since 1985 at a Sharpe of 0.98.
     Real trend-following funds charge roughly 2% of assets plus 20% of profits and pay
     trading costs, and have earned far less, so the optimizer will tend to overweight it.
   - **Equity_LS** ignores short-selling costs and momentum's high turnover.
