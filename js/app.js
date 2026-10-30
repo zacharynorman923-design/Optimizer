@@ -119,6 +119,15 @@ $('sleeves').addEventListener('input', (e) => {
   update(250);
 });
 
+// Back to defaults: sleeves 0–100% of the portfolio, classes 0–100%, no custom weights.
+// Which sleeves are ticked, the objective and the window stay as they are.
+$('resetBtn').onclick = () => {
+  Object.assign(state, { lo: {}, hi: {}, limitOf: {}, custom: {}, classLo: {}, classHi: {} });
+  renderSleeves();
+  renderClasses();
+  update();
+};
+
 document.querySelectorAll('[data-preset]').forEach((b) => {
   b.onclick = () => {
     const p = b.dataset.preset;
