@@ -13,3 +13,7 @@ EM_SmallValue,Emerging Markets Small Value,Emerging,Diversified Emerging Mkts,Em
 EM_LargeValue,Emerging Markets Large Value,Emerging,Diversified Emerging Mkts,Emerging_Markets_6_Portfolios_ME_BE-ME_CSV.zip,BIG HiBM,1989-07-31,2026-09-30,447
 EM_Market,Emerging Markets Market,Emerging,Diversified Emerging Mkts,Emerging_Markets_6_Portfolios_ME_BE-ME_CSV.zip,cap-weighted six portfolios,1989-07-31,2026-09-30,447
 Cash,Cash (1-month T-bill),US,Money Market-Taxable,F-F_Research_Data_Factors_CSV.zip,RF,1926-07-31,2026-09-30,1203
+UST_1Y,US Treasury 1-year,US,Short Government,Federal Reserve H.15 (daily),par bond from month-end 1-year CMT yield,1962-02-28,2026-09-30,776
+UST_5Y,US Treasury 5-year,US,Intermediate Government,Federal Reserve H.15 (daily),par bond from month-end 5-year CMT yield,1962-02-28,2026-09-30,776
+UST_10Y,US Treasury 10-year,US,Long Government,Federal Reserve H.15 (daily),par bond from month-end 10-year CMT yield,1962-02-28,2026-09-30,776
+Commodities,Commodities (equal-weight futures),Global,Commodities Broad Basket,AQR Commodities for the Long Run (monthly) + HGER (Yahoo Finance),AQR equal-weight excess return + RF; HGER total return after AQR's last month,1926-07-31,2026-09-30,1203

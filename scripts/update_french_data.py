@@ -52,6 +52,27 @@ FILES = {
 }
 EM_ZIP_PATTERN = re.compile(r"emerging.*6_portfolios.*be-?me.*_csv\.zip$", re.I)
 
+AQR_DIR = ROOT / "data" / "raw" / "aqr"
+AQR_URL = ("https://www.aqr.com/-/media/AQR/Documents/Insights/Data-Sets/"
+           "Commodities-for-the-Long-Run-Index-Level-Data-Monthly.xlsx")
+AQR_COLUMN = "Excess return of equal-weight commodities portfolio"
+# HGER (Harbor Commodity All-Weather Strategy ETF) carries the commodity sleeve forward
+# after AQR's last month. Daily dividend-adjusted closes; the last close of each month is used.
+# Yahoo downsamples range=max (and interval=1mo) to weekly bars that straddle month-ends,
+# so ask for an explicit date range. period2 is filled in at download time.
+HGER_URL = ("https://query1.finance.yahoo.com/v8/finance/chart/HGER"
+            "?period1=1640995200&period2={now}&interval=1d&events=div")
+
+H15_DIR = ROOT / "data" / "raw" / "h15"
+H15_PAGE = "https://www.federalreserve.gov/datadownload/Choose.aspx?rel=H15"
+
+# (sleeve, H.15 series in the daily Treasury constant-maturity package, maturity in years)
+BONDS = [
+    ("UST_1Y", "RIFLGFCY01_N.B", 1),
+    ("UST_5Y", "RIFLGFCY05_N.B", 5),
+    ("UST_10Y", "RIFLGFCY10_N.B", 10),
+]
+
 # French's missing-value markers.
 MISSING = (-99.99, -999.0)
 
@@ -71,6 +92,11 @@ SLEEVES = [
     ("EM_LargeValue", "Emerging Markets Large Value", "Emerging", "Diversified Emerging Mkts", "em_me_bm", "BIG HiBM"),
     ("EM_Market", "Emerging Markets Market", "Emerging", "Diversified Emerging Mkts", "em_me_bm", "cap-weighted six portfolios"),
     ("Cash", "Cash (1-month T-bill)", "US", "Money Market-Taxable", "ff3", "RF"),
+    ("UST_1Y", "US Treasury 1-year", "US", "Short Government", "h15", "par bond from month-end 1-year CMT yield"),
+    ("UST_5Y", "US Treasury 5-year", "US", "Intermediate Government", "h15", "par bond from month-end 5-year CMT yield"),
+    ("UST_10Y", "US Treasury 10-year", "US", "Long Government", "h15", "par bond from month-end 10-year CMT yield"),
+    ("Commodities", "Commodities (equal-weight futures)", "Global", "Commodities Broad Basket", "aqr",
+     "AQR equal-weight excess return + RF; HGER total return after AQR's last month"),
 ]
 
 WINDOWS = [
@@ -389,6 +415,193 @@ def build_sleeves(csvs: dict[str, Path]) -> tuple[pd.DataFrame, dict]:
     return sleeves, extras
 
 
+# --------------------------------------------------------------------------- Treasury bonds (H.15)
+
+
+def fetch_h15(skip_download: bool) -> Path:
+    """Download the Fed's H.15 daily Treasury constant-maturity package to data/raw/h15/.
+
+    The package link is read from the H.15 download page each time (the full-history daily
+    package is the one with no observation limit), so a changed link doesn't break the refresh.
+    """
+    H15_DIR.mkdir(parents=True, exist_ok=True)
+    path = H15_DIR / "H15_treasury_constant_maturity_daily.csv"
+    if skip_download:
+        if not path.exists():
+            raise FileNotFoundError(f"Missing {path}; run without --skip-download")
+        return path
+    import html as htmllib
+    import requests
+
+    session = requests.Session()
+    session.headers["User-Agent"] = USER_AGENT
+    page = http_get(session, H15_PAGE).text
+    opts = [htmllib.unescape(v) for v in re.findall(r'value="(rel=H15[^"]*type=package)"', page)]
+    full = [o for o in opts if "lastobs=&" in o]
+    if not full:
+        raise RuntimeError(f"No full-history H.15 package link found on {H15_PAGE}")
+    url = "https://www.federalreserve.gov/datadownload/Output.aspx?" + full[0]
+    log(f"Downloading {url}")
+    text = http_get(session, url).text
+    if "RIFLGFCY10_N.B" not in text:
+        raise RuntimeError(f"{url} is not the daily Treasury constant-maturity package")
+    path.write_text(text)
+    return path
+
+
+def read_h15(path: Path) -> pd.DataFrame:
+    """The H.15 package as floats in percent. Six label rows precede the data; 'ND' = no data."""
+    df = pd.read_csv(path, skiprows=5, index_col=0)
+    df.index = pd.to_datetime(df.index)
+    return df.apply(pd.to_numeric, errors="coerce")
+
+
+def month_end_yields(s: pd.Series) -> pd.Series:
+    """The last daily close of each month, indexed at month-end."""
+    s = s.dropna()
+    s = s.groupby(s.index.to_period("M")).last()
+    s.index = s.index.to_timestamp() + pd.offsets.MonthEnd(0)
+    return s
+
+
+def bond_returns(yields_pct: pd.Series, maturity: float) -> pd.Series:
+    """Monthly total return of a constant-maturity par bond, rebuilt from yields.
+
+    At the end of month t-1 buy a par bond (price 1) paying coupon c = y(t-1), semiannually,
+    with `maturity` years left. One month later it has maturity - 1/12 years left and is
+    repriced at the new yield y(t):
+        P = c/2 * (1 - (1 + y/2)^-n) / (y/2) + (1 + y/2)^-n,   n = 2 * (maturity - 1/12)
+    Return = P - 1 + c/12 (price change plus one month's accrued coupon). Rolling into a fresh
+    par bond each month keeps the maturity constant. A missing month makes that month's and
+    the next month's return missing.
+    """
+    y = yields_pct / 100.0
+    y = y.asfreq("ME")  # expose gaps as NaN so they don't get bridged
+    c = y.shift(1)
+    n = 2 * (maturity - 1 / 12)
+    half = y / 2
+    disc = (1 + half) ** (-n)
+    annuity = np.where(np.abs(half) > 1e-10, (1 - disc) / half.where(np.abs(half) > 1e-10, 1), n)
+    price = c / 2 * annuity + disc
+    return (price - 1 + c / 12).rename(None)
+
+
+def build_bonds(path: Path) -> tuple[dict[str, pd.Series], list[dict]]:
+    h15 = read_h15(path)
+    this_month = pd.Timestamp.today().to_period("M").to_timestamp()
+    out = {}
+    for sleeve, sid, maturity in BONDS:
+        r = bond_returns(month_end_yields(h15[sid]), maturity).dropna()
+        out[sleeve] = r[r.index < this_month]  # complete months only
+    last = h15[[sid for _, sid, _ in BONDS]].dropna().index[-1]
+    log(f"  H.15 Treasury yields: {h15.index[0]:%Y-%m-%d} to {last:%Y-%m-%d}")
+    cuts = [{"file": "Federal Reserve H.15 (daily Treasury CMT)", "csv": path.name,
+             "first_line": f"{h15.index[0]:%Y-%m-%d} to {last:%Y-%m-%d}",
+             "data_cut": f"{last:%Y%m%d}",
+             "processed_at": dt.datetime.now().isoformat(timespec="seconds")}]
+    return out, cuts
+
+
+# --------------------------------------------------------------------------- commodities (AQR + HGER)
+
+EXTERNAL_SOURCES = {
+    "h15": "Federal Reserve H.15 (daily)",
+    "aqr": "AQR Commodities for the Long Run (monthly) + HGER (Yahoo Finance)",
+}
+
+
+def _download(url: str, path: Path, skip: bool, check) -> Path:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if skip:
+        if not path.exists():
+            raise FileNotFoundError(f"Missing {path}; run without --skip-download")
+        return path
+    import requests
+
+    session = requests.Session()
+    session.headers["User-Agent"] = USER_AGENT
+    log(f"Downloading {url}")
+    data = http_get(session, url).content
+    if not check(data):
+        raise RuntimeError(f"{url} returned something unexpected")
+    path.write_bytes(data)
+    return path
+
+
+def read_aqr(path: Path) -> pd.Series:
+    """AQR's equal-weight commodity futures excess return (over T-bills), month-end indexed."""
+    raw = pd.read_excel(path, header=None)
+    hdr = next(i for i, row in raw.iterrows() if AQR_COLUMN in row.values)
+    col = list(raw.iloc[hdr]).index(AQR_COLUMN)
+    data = raw.iloc[hdr + 1:, [0, col]].dropna()
+    dates = pd.to_datetime(data.iloc[:, 0].astype(str).str[:10]) + pd.offsets.MonthEnd(0)
+    return pd.Series(data.iloc[:, 1].astype(float).values, index=pd.DatetimeIndex(dates)).sort_index()
+
+
+def read_hger(path: Path) -> pd.Series:
+    """HGER monthly total returns: last dividend-adjusted daily close of each month (complete months only)."""
+    res = json.loads(path.read_text())["chart"]["result"][0]
+    gmt = res.get("meta", {}).get("gmtoffset", 0)  # exchange-local dates, not UTC
+    ts = pd.to_datetime(np.asarray(res["timestamp"]) + gmt, unit="s")
+    adj = pd.Series(res["indicators"]["adjclose"][0]["adjclose"], index=ts, dtype=float).dropna()
+    if pd.Series(adj.index).diff().median() > pd.Timedelta(days=3):
+        raise ValueError("Yahoo returned weekly or monthly bars, not daily closes")
+    adj = adj.groupby(adj.index.to_period("M")).last()
+    adj.index = adj.index.to_timestamp() + pd.offsets.MonthEnd(0)
+    this_month = pd.Timestamp.today().to_period("M").to_timestamp()
+    return adj.pct_change().dropna()[lambda r: r.index < this_month]
+
+
+def build_commodities(rf: pd.Series, skip: bool) -> tuple[pd.Series, pd.DataFrame, list[dict]]:
+    """AQR excess return + RF through AQR's last month, then HGER's total return.
+
+    Returns the spliced sleeve, a side-by-side table (for checking the overlap), and data-cut rows.
+    """
+    aqr_path = _download(AQR_URL, AQR_DIR / "Commodities-for-the-Long-Run-Index-Level-Data-Monthly.xlsx",
+                         skip, lambda b: b.startswith(b"PK"))
+    aqr_total = (read_aqr(aqr_path) + rf).dropna()  # RF (French) starts 1926-07
+    try:
+        hger_path = _download(HGER_URL.format(now=int(time.time())), AQR_DIR / "HGER_yahoo_daily.json", skip,
+                              lambda b: b'"adjclose"' in b)
+        hger = read_hger(hger_path)
+    except Exception as exc:  # keep the rest of the refresh going; the sleeve just ends with AQR
+        log(f"  WARNING: HGER unavailable ({exc}); Commodities ends at AQR's last month")
+        hger_path = AQR_DIR / "HGER_yahoo_daily.json"
+        hger = pd.Series(dtype=float, index=pd.DatetimeIndex([]))
+    last_aqr = aqr_total.index[-1]
+    sleeve = pd.concat([aqr_total, hger[hger.index > last_aqr]])
+    table = pd.DataFrame({"return": sleeve,
+                          "source": np.where(sleeve.index <= last_aqr, "AQR + RF", "HGER"),
+                          "aqr_total": aqr_total.reindex(sleeve.index),
+                          "hger_total": hger.reindex(sleeve.index)})
+    table.index.name = "date"
+    hger_span = f"{hger.index[0]:%Y-%m} to {hger.index[-1]:%Y-%m}" if len(hger) else "not available"
+    log(f"  Commodities: AQR + RF {aqr_total.index[0]:%Y-%m} to {last_aqr:%Y-%m}, HGER {hger_span}")
+    now = dt.datetime.now().isoformat(timespec="seconds")
+    cuts = [
+        {"file": "AQR Commodities for the Long Run", "csv": aqr_path.name,
+         "first_line": f"data through {last_aqr:%Y-%m}", "data_cut": f"{last_aqr:%Y%m}", "processed_at": now},
+        {"file": "HGER (Yahoo Finance)", "csv": hger_path.name,
+         "first_line": hger_span, "data_cut": f"{hger.index[-1]:%Y%m}" if len(hger) else "",
+         "processed_at": now},
+    ]
+    return sleeve, table, cuts
+
+
+def splice_check(table: pd.DataFrame) -> pd.DataFrame:
+    """How closely HGER tracked AQR's index over the months both exist."""
+    both = table[["aqr_total", "hger_total"]].dropna()
+    if len(both) < 12:
+        return pd.DataFrame({"note": [f"only {len(both)} overlapping months"]})
+    d = both["hger_total"] - both["aqr_total"]
+    yr = (1 + both).groupby(both.index.year).prod() - 1
+    rows = [("overlap", f"{both.index[0]:%Y-%m} to {both.index[-1]:%Y-%m}"), ("months", len(both)),
+            ("correlation", both.corr().iloc[0, 1]), ("tracking error (ann.)", d.std() * np.sqrt(12)),
+            ("mean difference (ann.)", d.mean() * 12)]
+    rows += [(f"{y} AQR / HGER", f"{a:.1%} / {h:.1%}") for y, (a, h) in yr.iterrows()]
+    return pd.DataFrame(rows, columns=["item", "value"]).set_index("item")
+
+
 # --------------------------------------------------------------------------- stats
 
 
@@ -601,7 +814,7 @@ def metadata(sleeves: pd.DataFrame, zips: dict[str, Path]) -> pd.DataFrame:
         s = sleeves[sid]
         rows.append({
             "sleeve": sid, "name": name, "region": region, "morningstar_category": cat,
-            "source_file": zips[key].name, "source_column": col,
+            "source_file": zips[key].name if key in zips else EXTERNAL_SOURCES[key], "source_column": col,
             "start_date": f"{s.first_valid_index():%Y-%m-%d}" if s.notna().any() else "",
             "end_date": f"{s.last_valid_index():%Y-%m-%d}" if s.notna().any() else "",
             "months": int(s.notna().sum()),
@@ -627,6 +840,16 @@ def main() -> int:
     cuts = log_data_cuts(csvs, zips)
 
     sleeves, x = build_sleeves(csvs)
+    log("Treasury yields (Federal Reserve H.15):")
+    bonds, bond_cuts = build_bonds(fetch_h15(args.skip_download))
+    # month-end on the French grid; bond months after French's last month are kept too
+    sleeves = sleeves.join(pd.DataFrame(bonds), how="outer")
+    OUT_DIR.mkdir(parents=True, exist_ok=True)
+    log("Commodities (AQR + HGER):")
+    commodities, splice, com_cuts = build_commodities(x["rf"], args.skip_download)
+    sleeves = sleeves.join(commodities.rename("Commodities"), how="outer")[[sid for sid, *_ in SLEEVES]]
+    splice.to_csv(OUT_DIR / "commodities_splice.csv", date_format="%Y-%m-%d", float_format="%.6f")
+    cuts = pd.concat([cuts, pd.DataFrame(bond_cuts + com_cuts)], ignore_index=True)
     rf = x["rf"]
     OUT_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -673,6 +896,7 @@ def main() -> int:
     sheets["Rolling10y_SV_vs_LC"] = rolling_excess(sleeves)
     sheets["Annual_Check"] = annual_check(cal, x["annual_french"])
     sheets["Size_Lag_Check"] = x["lag_check"].set_index("lag_months")
+    sheets["Commodities_Splice"] = splice_check(splice)
 
     d = dfat(x["ff5"])
     if d:
