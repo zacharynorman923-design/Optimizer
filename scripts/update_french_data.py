@@ -66,6 +66,9 @@ TSMOM_URL = ("https://www.aqr.com/-/media/AQR/Documents/Insights/Data-Sets/"
 # AQMIX (AQR Managed Futures Strategy Fund, Class I) supplies Trend from TREND_FUND_FROM onward (so the
 # current year matches the real fund), and also after AQR's last month if that is earlier.
 TREND_FUND_FROM = "2026-01-31"
+# Fee-equivalent haircut on the paper TSMOM factor: 2% a year, taken as 2%/12 every month.
+# Not applied to AQMIX months, which are already net of the fund's own fees.
+TREND_FACTOR_FEE = 0.02
 AQMIX_URL = ("https://query1.finance.yahoo.com/v8/finance/chart/AQMIX"
              "?period1=1230768000&period2={now}&interval=1d&events=div%7CcapitalGain")
 HGER_URL = ("https://query1.finance.yahoo.com/v8/finance/chart/HGER"
@@ -106,7 +109,7 @@ SLEEVES = [
     ("Commodities", "Commodities (equal-weight futures)", "Global", "Commodities Broad Basket", "aqr",
      "AQR equal-weight excess return + RF; HGER total return after AQR's last month"),
     ("Trend", "Trend-following (AQR TSMOM)", "Global", "Systematic Trend", "tsmom",
-     "AQR time-series momentum factor (all assets) excess return + RF; AQMIX total return after AQR's last month"),
+     "AQR time-series momentum factor (all assets) excess return + RF - 2%/yr fee; AQMIX total return from 2026-01"),
     ("Equity_LS", "Equity long/short (value + momentum)", "US", "Equity Market Neutral", "mom",
      "50% HML + 50% Mom (French), rebalanced monthly, + RF"),
 ]
@@ -657,7 +660,7 @@ def build_hedge_proxies(csvs: dict[str, Path], ff3_m: pd.DataFrame, skip: bool) 
     tsmom = read_tsmom(tsmom_path)
     mom_block = next(b for b in split_blocks(csvs["mom"]) if b.freq == "M")
     mom = mom_block.returns().iloc[:, 0]
-    factor = (tsmom["TSMOM"] + rf).dropna()
+    factor = (tsmom["TSMOM"] + rf - TREND_FACTOR_FEE / 12).dropna()
     last = factor.index[-1]
     try:
         aqmix_path = _download(AQMIX_URL.format(now=int(time.time())), AQR_DIR / "AQMIX_yahoo_daily.json", skip,
