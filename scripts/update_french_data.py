@@ -63,12 +63,6 @@ AQR_COLUMN = "Excess return of equal-weight commodities portfolio"
 HGER_URL = ("https://query1.finance.yahoo.com/v8/finance/chart/HGER"
             "?period1=1640995200&period2={now}&interval=1d&events=div")
 
-GOLD_DIR = ROOT / "data" / "raw" / "gold"
-# London gold price, afternoon fixing (LBMA Gold Price PM since 2015), USD per troy ounce, daily from 1968.
-GOLD_URL = "https://api.statistiken.bundesbank.de/rest/download/BBEX3/D.XAU.USD.EA.AC.C04?format=csv&lang=en"
-# GLD (SPDR Gold Shares) daily closes: cross-check, and fallback if the Bundesbank is unreachable.
-GLD_URL = "https://query1.finance.yahoo.com/v8/finance/chart/GLD?period1=1100000000&period2={now}&interval=1d"
-
 H15_DIR = ROOT / "data" / "raw" / "h15"
 H15_PAGE = "https://www.federalreserve.gov/datadownload/Choose.aspx?rel=H15"
 
@@ -101,8 +95,6 @@ SLEEVES = [
     ("UST_1Y", "US Treasury 1-year", "US", "Short Government", "h15", "par bond from month-end 1-year CMT yield"),
     ("UST_5Y", "US Treasury 5-year", "US", "Intermediate Government", "h15", "par bond from month-end 5-year CMT yield"),
     ("UST_10Y", "US Treasury 10-year", "US", "Long Government", "h15", "par bond from month-end 10-year CMT yield"),
-    ("Gold", "Gold (London PM price)", "Global", "Commodities Focused", "gold",
-     "month-end London PM gold price, USD; price return (gold pays no income)"),
     ("Commodities", "Commodities (equal-weight futures)", "Global", "Commodities Broad Basket", "aqr",
      "AQR equal-weight excess return + RF; HGER total return after AQR's last month"),
 ]
@@ -515,7 +507,6 @@ def build_bonds(path: Path) -> tuple[dict[str, pd.Series], list[dict]]:
 EXTERNAL_SOURCES = {
     "h15": "Federal Reserve H.15 (daily)",
     "aqr": "AQR Commodities for the Long Run (monthly) + HGER (Yahoo Finance)",
-    "gold": "Deutsche Bundesbank BBEX3.D.XAU.USD.EA.AC.C04 (London gold price)",
 }
 
 
@@ -608,71 +599,6 @@ def splice_check(table: pd.DataFrame) -> pd.DataFrame:
             ("correlation", both.corr().iloc[0, 1]), ("tracking error (ann.)", d.std() * np.sqrt(12)),
             ("mean difference (ann.)", d.mean() * 12)]
     rows += [(f"{y} AQR / HGER", f"{a:.1%} / {h:.1%}") for y, (a, h) in yr.iterrows()]
-    return pd.DataFrame(rows, columns=["item", "value"]).set_index("item")
-
-
-# --------------------------------------------------------------------------- gold
-
-
-def read_bundesbank(path: Path) -> pd.Series:
-    """Daily values from a Bundesbank time-series CSV: metadata rows, then 'YYYY-MM-DD,value,flag'."""
-    rows = []
-    for line in path.read_text(encoding="utf-8-sig").splitlines():
-        cells = [c.strip().strip('"') for c in line.split(",")]
-        if len(cells) > 1 and re.fullmatch(r"\d{4}-\d{2}-\d{2}", cells[0]):
-            try:
-                rows.append((cells[0], float(cells[1])))
-            except ValueError:  # '.' = no fixing that day
-                pass
-    s = pd.Series(dict(rows), dtype=float)
-    s.index = pd.to_datetime(s.index)
-    return s.sort_index()
-
-
-def month_end_returns(prices: pd.Series) -> pd.Series:
-    """Monthly returns from the last price of each month (complete months only)."""
-    m = prices.groupby(prices.index.to_period("M")).last()
-    m.index = m.index.to_timestamp() + pd.offsets.MonthEnd(0)
-    this_month = pd.Timestamp.today().to_period("M").to_timestamp()
-    return m.pct_change().dropna()[lambda r: r.index < this_month]
-
-
-def build_gold(skip: bool) -> tuple[pd.Series, pd.DataFrame, list[dict]]:
-    """Gold from the Bundesbank's London PM price; GLD alongside as a check (and fallback)."""
-    now = dt.datetime.now().isoformat(timespec="seconds")
-    gld_path = _download(GLD_URL.format(now=int(time.time())), GOLD_DIR / "GLD_yahoo_daily.json", skip,
-                         lambda b: b'"adjclose"' in b)
-    gld = read_hger(gld_path)  # same Yahoo format: last adjusted daily close per month
-    try:
-        bb_path = _download(GOLD_URL, GOLD_DIR / "bundesbank_gold_london_pm_usd.csv", skip,
-                            lambda b: b"XAU" in b or b"gold" in b.lower())
-        fix = read_bundesbank(bb_path)
-        gold = month_end_returns(fix)
-        source, span = "London PM price (Bundesbank)", f"{fix.index[0]:%Y-%m-%d} to {fix.index[-1]:%Y-%m-%d}"
-    except Exception as exc:
-        log(f"  WARNING: Bundesbank gold price unavailable ({exc}); Gold falls back to GLD from {gld.index[0]:%Y-%m}")
-        gold, source, span = gld, "GLD (fallback)", "not available"
-    table = pd.DataFrame({"gold": gold, "gld": gld.reindex(gold.index)})
-    table.index.name = "date"
-    log(f"  Gold: {source}, {gold.index[0]:%Y-%m} to {gold.index[-1]:%Y-%m}")
-    cuts = [{"file": "Gold, London PM price (Bundesbank)", "csv": "bundesbank_gold_london_pm_usd.csv",
-             "first_line": span, "data_cut": "" if span == "not available" else f"{fix.index[-1]:%Y%m%d}",
-             "processed_at": now},
-            {"file": "GLD (Yahoo Finance)", "csv": gld_path.name,
-             "first_line": f"{gld.index[0]:%Y-%m} to {gld.index[-1]:%Y-%m}", "data_cut": f"{gld.index[-1]:%Y%m}",
-             "processed_at": now}]
-    return gold, table, cuts
-
-
-def gold_check(table: pd.DataFrame) -> pd.DataFrame:
-    """How closely GLD tracked the London price; GLD should trail by about its 0.40% fee."""
-    both = table.dropna()
-    d = both["gld"] - both["gold"]
-    yr = (1 + both).groupby(both.index.year).prod() - 1
-    rows = [("overlap", f"{both.index[0]:%Y-%m} to {both.index[-1]:%Y-%m}"), ("months", len(both)),
-            ("correlation", both.corr().iloc[0, 1]), ("tracking error (ann.)", d.std() * np.sqrt(12)),
-            ("mean difference GLD - gold (ann.)", d.mean() * 12)]
-    rows += [(f"{y} gold / GLD", f"{a:.1%} / {g:.1%}") for y, (a, g) in yr.tail(5).iterrows()]
     return pd.DataFrame(rows, columns=["item", "value"]).set_index("item")
 
 
@@ -921,11 +847,7 @@ def main() -> int:
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     log("Commodities (AQR + HGER):")
     commodities, splice, com_cuts = build_commodities(x["rf"], args.skip_download)
-    log("Gold:")
-    gold, gold_table, gold_cuts = build_gold(args.skip_download)
-    com_cuts += gold_cuts
-    sleeves = sleeves.join([commodities.rename("Commodities"), gold.rename("Gold")], how="outer")
-    sleeves = sleeves[[sid for sid, *_ in SLEEVES]]
+    sleeves = sleeves.join(commodities.rename("Commodities"), how="outer")[[sid for sid, *_ in SLEEVES]]
     splice.to_csv(OUT_DIR / "commodities_splice.csv", date_format="%Y-%m-%d", float_format="%.6f")
     cuts = pd.concat([cuts, pd.DataFrame(bond_cuts + com_cuts)], ignore_index=True)
     rf = x["rf"]
@@ -975,7 +897,6 @@ def main() -> int:
     sheets["Annual_Check"] = annual_check(cal, x["annual_french"])
     sheets["Size_Lag_Check"] = x["lag_check"].set_index("lag_months")
     sheets["Commodities_Splice"] = splice_check(splice)
-    sheets["Gold_vs_GLD"] = gold_check(gold_table)
 
     d = dfat(x["ff5"])
     if d:
