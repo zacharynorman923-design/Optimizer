@@ -135,6 +135,12 @@ a{color:var(--accent)}
 .mk-sharpe{fill:var(--gold)}
 .mk-minvar{fill:var(--accent-2)}
 .mk-bench{fill:var(--panel);stroke:var(--ink-soft);stroke-width:2.5}
+.mk-bm{fill:var(--panel);stroke:var(--muted-line);stroke-width:2}
+.c-mklabel{fill:var(--muted);font-family:'JetBrains Mono',monospace;font-size:10.5px;pointer-events:none}
+.btable{overflow-x:auto}
+.btable table{min-width:440px}
+.btable tr.port td{font-weight:700;color:var(--ink)}
+.btable tr.sel td:first-child::after{content:' ◆';color:var(--ink-soft);font-size:10px}
 .bar-up{fill:var(--up)} .bar-down{fill:var(--down)}
 .partial{opacity:.45}
 .xhair{stroke:var(--muted-line);stroke-width:1;stroke-dasharray:3 3}
@@ -147,7 +153,7 @@ a{color:var(--accent)}
 .lg-line{display:inline-block;width:16px;height:3px;border-radius:2px;background:var(--accent)}
 .lg-dot{display:inline-block;width:11px;height:11px;border-radius:50%}
 .lg-dot.mk-sel{border:3px solid var(--accent)} .lg-dot.mk-sharpe{background:var(--gold)} .lg-dot.mk-minvar{background:var(--accent-2)}
-.lg-dot.mk-bench{border:2.5px solid var(--ink-soft)} .lg-dot.c-sleeve{background:var(--muted-line)}
+.lg-dot.mk-bench{border:2.5px solid var(--ink-soft)} .lg-dot.mk-bm{width:9px;height:9px;border:2px solid var(--muted-line)} .lg-dot.c-sleeve{background:var(--muted-line)}
 
 /* ---------------------------- metrics table ---------------------------- */
 .mtable table,.ytable table{width:100%;border-collapse:collapse;font-size:13px}

@@ -103,7 +103,8 @@ export function frontierChart(el, front, sleeves, marks) {
     g += `<circle class="hit" cx="${X(s.vol)}" cy="${Y(s.ret)}" r="12" data-tip="${esc(`<b>${s.label}</b><br>Return ${pct(s.ret)} · Vol ${pct(s.vol)}`)}"/>`;
   });
   marks.forEach((m) => {
-    g += `<circle class="mk ${m.cls}" cx="${X(m.vol)}" cy="${Y(m.ret)}" r="${m.cls === 'mk-sel' ? 10 : 6}" `
+    if (m.text) g += `<text class="c-mklabel" x="${X(m.vol) + 8}" y="${Y(m.ret) - 7}">${esc(m.text)}</text>`;
+    g += `<circle class="mk ${m.cls}" cx="${X(m.vol)}" cy="${Y(m.ret)}" r="${m.cls === 'mk-sel' ? 10 : m.cls === 'mk-bm' ? 4.5 : 6}" `
       + `data-tip="${esc(`<b>${m.label}</b><br>Return ${pct(m.ret)} · Vol ${pct(m.vol)}${m.sharpe != null ? `<br>Sharpe ${m.sharpe.toFixed(2)}` : ''}`)}"/>`;
   });
   el.innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Efficient frontier">${g}</svg>`;

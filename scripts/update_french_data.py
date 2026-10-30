@@ -433,7 +433,9 @@ def build_sleeves(csvs: dict[str, Path]) -> tuple[pd.DataFrame, dict]:
         "DevExUS_SmallValue": dev["vw_annual"]["SMALL HiBM"], "DevExUS_LargeValue": dev["vw_annual"]["BIG HiBM"],
         "EM_SmallValue": em["vw_annual"]["SMALL HiBM"], "EM_LargeValue": em["vw_annual"]["BIG HiBM"],
     }
-    extras = {"rf": ff3_m["RF"], "ff3_m": ff3_m, "ff5": ff5_m, "annual_french": annual_french, "lag_check": lag_check,
+    region_caps = {k: (p["avg_size"] * p["n_firms"]).where(p["n_firms"] > 0).sum(axis=1, min_count=6).shift(lag)
+                   for k, p in (("US_LargeCap", us), ("DevExUS_Market", dev), ("EM_Market", em)) if "avg_size" in p}
+    extras = {"rf": ff3_m["RF"], "ff3_m": ff3_m, "region_caps": region_caps, "ff5": ff5_m, "annual_french": annual_french, "lag_check": lag_check,
               "lag": lag, "ff3_annual": ff3_a}
     return sleeves, extras
 
@@ -676,6 +678,71 @@ def build_hedge_proxies(csvs: dict[str, Path], ff3_m: pd.DataFrame, skip: bool) 
             {"file": "AQMIX (Yahoo Finance)", "csv": "AQMIX_yahoo_daily.json", "first_line": span,
              "data_cut": f"{aqmix.index[-1]:%Y%m}" if len(aqmix) else "", "processed_at": now}]
     return out, table, cuts
+
+
+# --------------------------------------------------------------------------- benchmarks
+
+# Blended benchmarks for comparison (not optimizer inputs). Blends rebalance monthly, like
+# published blended indexes. Stocks = French US market (≈ S&P 500); bonds = 5-year Treasury.
+BLENDS = [  # (id, name, stock weight)
+    ("BM_FI100", "100% fixed income (5-yr Treasury)", 0.0),
+    ("BM_20_80", "20/80 stocks/bonds", 0.2),
+    ("BM_40_60", "40/60 stocks/bonds", 0.4),
+    ("BM_60_40", "60/40 stocks/bonds", 0.6),
+    ("BM_80_20", "80/20 stocks/bonds", 0.8),
+    ("BM_EQ100", "100% US stocks (≈ S&P 500)", 1.0),
+]
+# Optional real-world checks from Yahoo (not used in the app).
+FUND_CHECKS = {"BM_60_40": "VBINX", "BM_World": "VT"}
+YAHOO_DAILY = "https://query1.finance.yahoo.com/v8/finance/chart/{t}?period1=0&period2={now}&interval=1d&events=div%7CcapitalGain"
+
+
+def build_benchmarks(sleeves: pd.DataFrame, region_caps: dict) -> tuple[pd.DataFrame, list[dict]]:
+    stocks, bonds = sleeves["US_LargeCap"], sleeves["UST_5Y"]
+    out, meta = {}, []
+    for bid, name, w in BLENDS:
+        out[bid] = (w * stocks + (1 - w) * bonds) if 0 < w < 1 else (stocks if w == 1 else bonds)
+        meta.append({"id": bid, "name": name,
+                     "composition": f"{w:.0%} US market + {1 - w:.0%} UST_5Y, rebalanced monthly" if 0 < w < 1
+                     else ("US_LargeCap (French US market)" if w == 1 else "UST_5Y")})
+    # all-world equity: US / developed ex-US / EM weighted by each region's total market value
+    caps = pd.DataFrame(region_caps)
+    rets = sleeves[list(caps.columns)]
+    w = caps.reindex(rets.index).where(rets.notna())
+    out["BM_World"] = (rets * w).sum(axis=1, min_count=len(caps.columns)) / w.sum(axis=1, min_count=len(caps.columns))
+    meta.append({"id": "BM_World", "name": "All-world equity (cap-weighted)",
+                 "composition": "US market + DevExUS_Market + EM_Market, weighted by each region's total market value"})
+    bm = pd.DataFrame(out)
+    bm.index.name = "date"
+    for m in meta:
+        sr = bm[m["id"]].dropna()
+        m.update(start_date=f"{sr.index[0]:%Y-%m-%d}", end_date=f"{sr.index[-1]:%Y-%m-%d}")
+    share = caps.div(caps.sum(axis=1), axis=0).dropna()
+    log(f"  Benchmarks: {', '.join(m['id'] for m in meta)}; world index US share "
+        f"{share['US_LargeCap'].iloc[0]:.0%} ({share.index[0]:%Y-%m}) -> {share['US_LargeCap'].iloc[-1]:.0%} ({share.index[-1]:%Y-%m})")
+    return bm, meta
+
+
+def benchmark_checks(bm: pd.DataFrame, skip: bool) -> pd.DataFrame:
+    """Built benchmarks vs real funds over the months both exist (VBINX for 60/40, VT for world)."""
+    rows = []
+    for bid, ticker in FUND_CHECKS.items():
+        try:
+            path = _download(YAHOO_DAILY.format(t=ticker, now=int(time.time())), AQR_DIR / f"{ticker}_yahoo_daily.json",
+                             skip, lambda b: b'"adjclose"' in b)
+            fund = read_yahoo_monthly(path)
+        except Exception as exc:
+            log(f"  WARNING: {ticker} check skipped ({exc})")
+            continue
+        both = pd.concat([bm[bid], fund], axis=1, keys=["built", "fund"]).dropna()
+        n = len(both)
+        cagr = lambda r: (1 + r).prod() ** (12 / n) - 1
+        rows.append({"benchmark": bid, "fund": ticker, "months": n,
+                     "from": f"{both.index[0]:%Y-%m}", "to": f"{both.index[-1]:%Y-%m}",
+                     "correlation": both.corr().iloc[0, 1], "tracking_error_ann": (both.fund - both.built).std() * np.sqrt(12),
+                     "CAGR_built": cagr(both.built), "CAGR_fund": cagr(both.fund),
+                     "vol_built": both.built.std() * np.sqrt(12), "vol_fund": both.fund.std() * np.sqrt(12)})
+    return pd.DataFrame(rows).set_index("benchmark") if rows else pd.DataFrame({"note": ["no fund data"]})
 
 
 # --------------------------------------------------------------------------- stats
@@ -937,6 +1004,10 @@ def main() -> int:
     OUT_DIR.mkdir(parents=True, exist_ok=True)
 
     sleeves.to_csv(OUT_DIR / "sleeves_monthly.csv", date_format="%Y-%m-%d", float_format="%.6f")
+    log("Benchmarks:")
+    bm, bm_meta = build_benchmarks(sleeves, x["region_caps"])
+    bm = bm.reindex(sleeves.index)
+    bm.to_csv(OUT_DIR / "benchmarks_monthly.csv", date_format="%Y-%m-%d", float_format="%.6f")
     cal = calendar_years(sleeves)
     cal.to_csv(OUT_DIR / "sleeves_annual.csv", float_format="%.6f")
     meta = metadata(sleeves, zips)
@@ -952,6 +1023,7 @@ def main() -> int:
                     "returns": {c: to_json_list(sleeves[c]) for c in sleeves}},
         "annual": {"years": [int(y) for y in cal.index],
                    "returns": {c: to_json_list(cal[c]) for c in cal}},
+        "benchmarks": {"list": bm_meta, "returns": {c: to_json_list(bm[c]) for c in bm}},
     }
     (OUT_DIR / "optimizer_returns.json").write_text(json.dumps(bundle, separators=(",", ":")))
 
@@ -980,6 +1052,9 @@ def main() -> int:
     sheets["Annual_Check"] = annual_check(cal, x["annual_french"])
     sheets["Size_Lag_Check"] = x["lag_check"].set_index("lag_months")
     sheets["Commodities_Splice"] = splice_check(splice)
+    sheets["Benchmarks_Full"] = window_stats(bm, rf, None, None)
+    sheets["Benchmarks_Calendar"] = calendar_years(bm)
+    sheets["Benchmark_Checks"] = benchmark_checks(bm, args.skip_download)
     sheets["Trend_Splice"] = splice_check(trend_table, "factor_total", "fund_total", "factor / AQMIX")
 
     d = dfat(x["ff5"])
