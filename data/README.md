@@ -21,6 +21,7 @@ All files come from the [Kenneth R. French Data Library](https://mba.tuck.dartmo
 |---|---|
 | `F-F_Research_Data_Factors_CSV.zip` | Mkt-RF and RF (US market, cash) |
 | `F-F_Research_Data_5_Factors_2x3_CSV.zip` | 5 factors for the DFAT regression |
+| FRED `DGS1`, `DGS5`, `DGS10`, `AAA` | Treasury and Aaa corporate yields for the bond sleeves |
 | `6_Portfolios_2x3_CSV.zip` | US size × book-to-market portfolios |
 | `6_Portfolios_ME_OP_2x3_CSV.zip` | US size × operating-profitability portfolios |
 | `Developed_ex_US_6_Portfolios_ME_BE-ME_CSV.zip` | Developed ex-US size × B/M portfolios |
@@ -49,6 +50,9 @@ Each sleeve keeps its own start date: earlier months are blank, not truncated.
 | EM_SmallValue / LargeValue / Market | Same as Developed, from the EM file | Diversified Emerging Mkts |
 | Cash | RF (1-month T-bill) | Money Market-Taxable |
 
+| UST_1Y / UST_5Y / UST_10Y | FRED `DGS1` / `DGS5` / `DGS10`, built into total returns (see below) | Short / Intermediate / Long Government |
+| Corp_AAA | FRED `AAA` (Moody's seasoned Aaa corporate yield), built into total returns | Long-Term Bond |
+
 All six portfolio sleeves use French's **value-weighted** returns. Percentages are
 converted to decimals, and `-99.99` / `-999` are treated as missing.
 
@@ -59,6 +63,22 @@ size should be lagged a month by running the same construction on the US six por
 and keeping the lag that tracks the official US market (Mkt-RF + RF) best. The result is in
 the `Size_Lag_Check` sheet. The six portfolios may not cover exactly the same stocks as French's
 market factor, so treat this as a close approximation of the region's market return.
+
+**Bond sleeves (FRED).** FRED publishes yields, not returns, so the script rebuilds monthly
+total returns. At each month-end it buys a par bond whose coupon equals that month's yield.
+A month later the bond is repriced at the new yield with one month less to maturity, and the
+month's return is the price change plus one month of coupon. It then rolls into a fresh par
+bond, so maturity stays constant. Raw yields are saved to `data/raw/fred/`.
+- **Treasuries:** month-end values of the daily constant-maturity yields, from 1962. Each is
+  treated as a 1-, 5- or 10-year bond.
+- **Aaa corporates:** Moody's yield exists only as a monthly *average* before 1983. To keep
+  one consistent series back to 1919 the script uses the monthly average throughout,
+  treated as a 20-year bond. Averages smooth the yield path, so this sleeve's volatility
+  and its month-to-month moves are somewhat understated.
+- **What this ignores:** defaults and downgrades (small for Aaa), callability, and the gap
+  between a constant-maturity yield and a real bond's. Treat these as close approximations
+  of index returns, not exact index returns.
+- Only complete months are kept.
 
 ## Outputs (`data/processed/`)
 

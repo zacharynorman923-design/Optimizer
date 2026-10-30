@@ -52,6 +52,19 @@ FILES = {
 }
 EM_ZIP_PATTERN = re.compile(r"emerging.*6_portfolios.*be-?me.*_csv\.zip$", re.I)
 
+FRED_DIR = ROOT / "data" / "raw" / "fred"
+FRED_URL = "https://fred.stlouisfed.org/graph/fredgraph.csv?id={}"
+
+# (sleeve, FRED series, assumed maturity in years, yield is a month-end daily close?)
+# Treasuries use the month-end value of the daily constant-maturity yield. Moody's Aaa
+# uses the monthly-average series, the only one going back to 1919 (see bond_returns()).
+BONDS = [
+    ("UST_1Y", "DGS1", 1, True),
+    ("UST_5Y", "DGS5", 5, True),
+    ("UST_10Y", "DGS10", 10, True),
+    ("Corp_AAA", "AAA", 20, False),
+]
+
 # French's missing-value markers.
 MISSING = (-99.99, -999.0)
 
@@ -71,6 +84,10 @@ SLEEVES = [
     ("EM_LargeValue", "Emerging Markets Large Value", "Emerging", "Diversified Emerging Mkts", "em_me_bm", "BIG HiBM"),
     ("EM_Market", "Emerging Markets Market", "Emerging", "Diversified Emerging Mkts", "em_me_bm", "cap-weighted six portfolios"),
     ("Cash", "Cash (1-month T-bill)", "US", "Money Market-Taxable", "ff3", "RF"),
+    ("UST_1Y", "US Treasury 1-year", "US", "Short Government", "DGS1", "par bond from month-end yield"),
+    ("UST_5Y", "US Treasury 5-year", "US", "Intermediate Government", "DGS5", "par bond from month-end yield"),
+    ("UST_10Y", "US Treasury 10-year", "US", "Long Government", "DGS10", "par bond from month-end yield"),
+    ("Corp_AAA", "US Corporate Aaa (Moody's)", "US", "Long-Term Bond", "AAA", "20-year par bond from monthly-average yield"),
 ]
 
 WINDOWS = [
@@ -389,6 +406,87 @@ def build_sleeves(csvs: dict[str, Path]) -> tuple[pd.DataFrame, dict]:
     return sleeves, extras
 
 
+# --------------------------------------------------------------------------- FRED bonds
+
+
+def fetch_fred(skip_download: bool) -> dict[str, Path]:
+    """Download each FRED series in BONDS to data/raw/fred/<id>.csv (or reuse it)."""
+    FRED_DIR.mkdir(parents=True, exist_ok=True)
+    paths = {sid: FRED_DIR / f"{sid}.csv" for _, sid, _, _ in BONDS}
+    if skip_download:
+        missing = [p for p in paths.values() if not p.exists()]
+        if missing:
+            raise FileNotFoundError(f"Missing {missing[0]}; run without --skip-download")
+        return paths
+    import requests
+
+    session = requests.Session()
+    session.headers["User-Agent"] = USER_AGENT
+    for sid, path in paths.items():
+        url = FRED_URL.format(sid)
+        log(f"Downloading {url}")
+        text = http_get(session, url).text
+        if not text.lower().startswith(("observation_date", "date")):
+            raise RuntimeError(f"{url} did not return a FRED CSV")
+        path.write_text(text)
+    return paths
+
+
+def read_fred(path: Path) -> pd.Series:
+    """A FRED CSV as a float series in percent; FRED marks missing values with '.'."""
+    df = pd.read_csv(path)
+    s = pd.to_numeric(df.iloc[:, 1], errors="coerce")
+    s.index = pd.to_datetime(df.iloc[:, 0])
+    return s.dropna()
+
+
+def to_monthly(s: pd.Series, month_end: bool) -> pd.Series:
+    """Month-end-indexed yields: the last daily close of each month, or the monthly value as is."""
+    if month_end:
+        s = s.groupby(s.index.to_period("M")).last()
+        s.index = s.index.to_timestamp() + pd.offsets.MonthEnd(0)
+    else:
+        s = s.copy()
+        s.index = s.index + pd.offsets.MonthEnd(0)
+    return s
+
+
+def bond_returns(yields_pct: pd.Series, maturity: float) -> pd.Series:
+    """Monthly total return of a constant-maturity par bond, rebuilt from yields.
+
+    At the end of month t-1 buy a par bond (price 1) paying coupon c = y(t-1), semiannually,
+    with `maturity` years left. One month later it has maturity - 1/12 years left and is
+    repriced at the new yield y(t):
+        P = c/2 * (1 - (1 + y/2)^-n) / (y/2) + (1 + y/2)^-n,   n = 2 * (maturity - 1/12)
+    Return = P - 1 + c/12 (price change plus one month's accrued coupon). Rolling into a fresh
+    par bond each month keeps the maturity constant. A missing month makes that month's and
+    the next month's return missing.
+    """
+    y = yields_pct / 100.0
+    y = y.asfreq("ME")  # expose gaps as NaN so they don't get bridged
+    c = y.shift(1)
+    n = 2 * (maturity - 1 / 12)
+    half = y / 2
+    disc = (1 + half) ** (-n)
+    annuity = np.where(np.abs(half) > 1e-10, (1 - disc) / half.where(np.abs(half) > 1e-10, 1), n)
+    price = c / 2 * annuity + disc
+    return (price - 1 + c / 12).rename(None)
+
+
+def build_bonds(paths: dict[str, Path]) -> tuple[dict[str, pd.Series], list[dict]]:
+    out, cuts = {}, []
+    for sleeve, sid, maturity, month_end in BONDS:
+        raw = read_fred(paths[sid])
+        r = bond_returns(to_monthly(raw, month_end), maturity).dropna()
+        out[sleeve] = r[r.index < pd.Timestamp.today().to_period("M").to_timestamp()]  # complete months only
+        cuts.append({"file": f"FRED {sid}", "csv": paths[sid].name,
+                     "first_line": f"{sid}: {raw.index[0]:%Y-%m-%d} to {raw.index[-1]:%Y-%m-%d}",
+                     "data_cut": f"{raw.index[-1]:%Y%m%d}",
+                     "processed_at": dt.datetime.now().isoformat(timespec="seconds")})
+        log(f"  FRED {sid}: through {raw.index[-1]:%Y-%m-%d}")
+    return out, cuts
+
+
 # --------------------------------------------------------------------------- stats
 
 
@@ -601,7 +699,7 @@ def metadata(sleeves: pd.DataFrame, zips: dict[str, Path]) -> pd.DataFrame:
         s = sleeves[sid]
         rows.append({
             "sleeve": sid, "name": name, "region": region, "morningstar_category": cat,
-            "source_file": zips[key].name, "source_column": col,
+            "source_file": zips[key].name if key in zips else f"FRED {key}", "source_column": col,
             "start_date": f"{s.first_valid_index():%Y-%m-%d}" if s.notna().any() else "",
             "end_date": f"{s.last_valid_index():%Y-%m-%d}" if s.notna().any() else "",
             "months": int(s.notna().sum()),
@@ -627,6 +725,12 @@ def main() -> int:
     cuts = log_data_cuts(csvs, zips)
 
     sleeves, x = build_sleeves(csvs)
+    log("FRED yields:")
+    bonds, fred_cuts = build_bonds(fetch_fred(args.skip_download))
+    # month-end on the French grid; bond months after French's last month are kept too
+    sleeves = sleeves.join(pd.DataFrame(bonds), how="outer")
+    sleeves = sleeves[[sid for sid, *_ in SLEEVES]]
+    cuts = pd.concat([cuts, pd.DataFrame(fred_cuts)], ignore_index=True)
     rf = x["rf"]
     OUT_DIR.mkdir(parents=True, exist_ok=True)
 
