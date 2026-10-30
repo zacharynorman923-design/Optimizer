@@ -22,6 +22,8 @@ modules. Installable as a PWA, and it works offline once loaded.
   with the per-sleeve limits, and the *Now* column shows where the portfolio lands. Limits that
   can't all be met are explained. *My own weights* ignores them but flags any class that's out
   of range.
+  **↺ Reset limits** puts every sleeve back to 0–100% of the portfolio, class limits to 0–100%, and
+  clears your own weights (ticked sleeves, objective and window stay).
   Presets: *All*, *US to 1926* (the five US style sleeves plus cash, 100 years of history) and *None*.
 - **Limits as a share of the class.** Each sleeve's min/max can be set as **% of the portfolio**
   or **% of its own class**, from the selector under the sleeve's name. Examples: US Large
