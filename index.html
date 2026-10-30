@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Optimizer — mean-variance on factor portfolios</title>
+<meta name="description" content="Mean-variance optimizer, efficient frontier and calendar-year backtest on Ken French size, value and profitability portfolios.">
+<meta name="theme-color" content="#0E1116">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+<div class="wrap">
+
+  <header class="top">
+    <div class="brand">
+      <div class="mark" aria-hidden="true"><span></span><span></span><span></span></div>
+      <div>
+        <h1>Optimizer</h1>
+        <p class="sub">Mean-variance on Ken French factor portfolios</p>
+      </div>
+    </div>
+    <div class="top-actions">
+      <button class="ghost-btn icon" id="themeBtn" aria-label="Toggle light / dark">◐</button>
+    </div>
+  </header>
+
+  <p class="dataline" id="dataLine">Loading return data…</p>
+
+  <!-- ------------------------------ sleeves ------------------------------ -->
+  <section class="panel" aria-labelledby="sleevesH">
+    <div class="panel-head">
+      <h2 id="sleevesH">Sleeves</h2>
+      <div class="chips">
+        <button class="chip" data-preset="all">All</button>
+        <button class="chip" data-preset="us">US to 1926</button>
+        <button class="chip" data-preset="none">None</button>
+      </div>
+    </div>
+    <p class="note">Tick the sleeves to include and set a minimum and maximum weight for each (in %).
+      The backtest window is the history every ticked sleeve shares.</p>
+    <div class="sleeve-head"><span></span><span>Sleeve</span><span>Min</span><span>Max</span><span id="wHead">Weight</span></div>
+    <div id="sleeves" class="sleeves"></div>
+  </section>
+
+  <!-- ------------------------------ settings ----------------------------- -->
+  <section class="panel" aria-labelledby="setH">
+    <div class="panel-head"><h2 id="setH">Settings</h2></div>
+    <div class="grid2">
+      <label class="fld"><span>Objective</span>
+        <select id="objective">
+          <option value="maxSharpe">Max Sharpe (tangency)</option>
+          <option value="minVar">Min volatility</option>
+          <option value="targetVol">Max return at a volatility</option>
+          <option value="targetRet">Min volatility for a return</option>
+          <option value="equal">Equal weight</option>
+          <option value="custom">My own weights</option>
+        </select>
+      </label>
+      <label class="fld" id="targetFld"><span id="targetLbl">Target (%)</span>
+        <input id="target" type="number" inputmode="decimal" step="0.5" min="0">
+      </label>
+      <label class="fld"><span>From</span><select id="startSel"></select></label>
+      <label class="fld"><span>To</span><select id="endSel"></select></label>
+      <label class="fld"><span>Rebalance</span>
+        <select id="rebalance">
+          <option value="annual">Annually (December)</option>
+          <option value="quarterly">Quarterly</option>
+          <option value="monthly">Monthly</option>
+          <option value="never">Never (buy and hold)</option>
+        </select>
+      </label>
+      <label class="fld"><span>Benchmark</span><select id="benchSel"></select></label>
+    </div>
+    <p class="history" id="history"></p>
+  </section>
+
+  <div class="status hidden" id="status" role="status"></div>
+
+  <!-- ------------------------------ results ------------------------------ -->
+  <div id="results" class="hidden">
+    <section class="panel" aria-labelledby="portH">
+      <div class="panel-head"><h2 id="portH">Portfolio</h2><span class="tag" id="portTag"></span></div>
+      <div class="kpis" id="kpis"></div>
+      <div class="weights" id="weights"></div>
+      <p class="note small">Return and volatility here are the historical annualized mean and standard deviation
+        over the window — the inputs the optimizer uses. Risk is each sleeve's share of portfolio variance.</p>
+    </section>
+
+    <section class="panel" aria-labelledby="frontH">
+      <div class="panel-head"><h2 id="frontH">Efficient frontier</h2>
+        <div class="legend">
+          <span><i class="lg-line"></i>Frontier</span>
+          <span><i class="lg-dot mk-sel"></i>Selected</span>
+          <span><i class="lg-dot mk-sharpe"></i>Max Sharpe</span>
+          <span><i class="lg-dot mk-minvar"></i>Min vol</span>
+          <span><i class="lg-dot mk-bench"></i>Benchmark</span>
+          <span><i class="lg-dot c-sleeve"></i>Sleeves</span>
+        </div>
+      </div>
+      <div class="chart" id="frontierChart"></div>
+      <p class="note small">Tap the frontier to pick that risk level. Tap a dot to see what it is.</p>
+    </section>
+
+    <section class="panel" aria-labelledby="btH">
+      <div class="panel-head"><h2 id="btH">Backtest</h2><span class="tag" id="btTag"></span></div>
+      <div class="mtable" id="mtable"></div>
+      <h3 class="chart-title">Growth of $10,000 <span class="muted">(log scale)</span></h3>
+      <div class="legend inline" id="growthLegend"></div>
+      <div class="chart" id="growthChart"></div>
+      <h3 class="chart-title">Drawdowns</h3>
+      <div class="chart" id="ddChart"></div>
+    </section>
+
+    <section class="panel" aria-labelledby="cyH">
+      <div class="panel-head"><h2 id="cyH">Calendar years</h2><span class="tag" id="cyTag"></span></div>
+      <h3 class="chart-title" id="cyTitle">Portfolio minus benchmark</h3>
+      <div class="chart" id="yearChart"></div>
+      <details class="years">
+        <summary>Year-by-year table</summary>
+        <div class="ytable" id="ytable"></div>
+      </details>
+    </section>
+
+    <section class="panel" aria-labelledby="corrH">
+      <div class="panel-head"><h2 id="corrH">Correlations</h2><span class="tag">monthly returns, same window</span></div>
+      <div class="chart scroll-x" id="heatmap"></div>
+    </section>
+
+    <section class="panel caveats">
+      <h2>Read this before trusting the numbers</h2>
+      <ul>
+        <li><b>The backtest is in-sample.</b> Weights are chosen using the same window they're tested on, so the
+          optimized portfolios look better than anyone could have done in real time. Max Sharpe especially piles into
+          whatever happened to do best.</li>
+        <li><b>These are paper portfolios.</b> French's returns carry no fees, trading costs, taxes or cash drag. Real funds
+          in these categories earned less, most of all in small cap and emerging markets.</li>
+        <li><b>History gets restated.</b> French rebuilds every series on each update, so numbers can shift slightly after a
+          data refresh.</li>
+        <li>US Market is the total US market (Mkt-RF + RF). International returns are in USD. Cash is the 1-month T-bill,
+          and Sharpe ratios are measured against it.</li>
+      </ul>
+      <p class="note small">Research and education only — not investment advice.</p>
+    </section>
+  </div>
+</div>
+<script type="module" src="js/app.js"></script>
+<script>
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
+  }
+</script>
+</body>
+</html>

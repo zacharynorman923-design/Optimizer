@@ -85,8 +85,8 @@ excess returns (arithmetic, ×12 and ×√12).
 
 ## Optimizer input format
 
-The optimizer isn't built yet, so this is the format it should read. Use either the
-CSVs (Excel) or the JSON (React); they contain the same numbers.
+The app (`index.html`) reads `optimizer_returns.json`. The CSVs hold the same numbers
+for spreadsheets or other tools.
 
 - **Frequency:** monthly. Annual returns are pre-compounded in `sleeves_annual.csv` / `annual` in the JSON.
 - **Units:** decimal total returns (`0.0123` = 1.23%), USD.
