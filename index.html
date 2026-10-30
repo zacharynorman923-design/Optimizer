@@ -77,6 +77,9 @@
       </label>
       <label class="fld"><span>Benchmark</span><select id="benchSel"></select></label>
     </div>
+    <h3 class="sub-h">Asset-class limits <span class="muted">(% of the portfolio)</span></h3>
+    <div class="class-head"><span>Class</span><span>Min</span><span>Max</span><span>Now</span></div>
+    <div id="classes" class="classes"></div>
     <p class="history" id="history"></p>
   </section>
 
@@ -87,6 +90,7 @@
     <section class="panel" aria-labelledby="portH">
       <div class="panel-head"><h2 id="portH">Portfolio</h2><span class="tag" id="portTag"></span></div>
       <div class="kpis" id="kpis"></div>
+      <p class="class-mix" id="classMix"></p>
       <div class="weights" id="weights"></div>
       <p class="note small">Return and volatility here are the historical annualized mean and standard deviation
         over the window — the inputs the optimizer uses. Risk is each sleeve's share of portfolio variance.</p>
