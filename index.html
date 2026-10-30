@@ -66,6 +66,12 @@
       <label class="fld" id="targetFld"><span id="targetLbl">Target (%)</span>
         <input id="target" type="number" inputmode="decimal" step="0.5" min="0">
       </label>
+      <label class="fld sharpe-lim hidden"><span>Max volatility (%)</span>
+        <input id="sharpeMaxVol" type="number" inputmode="decimal" step="0.5" min="0" placeholder="no cap">
+      </label>
+      <label class="fld sharpe-lim hidden"><span>Min return (%)</span>
+        <input id="sharpeMinRet" type="number" inputmode="decimal" step="0.5" placeholder="no floor">
+      </label>
       <label class="fld"><span>From</span><select id="startSel"></select></label>
       <label class="fld"><span>To</span><select id="endSel"></select></label>
       <label class="fld"><span>Rebalance</span>

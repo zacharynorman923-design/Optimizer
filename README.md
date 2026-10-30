@@ -35,7 +35,9 @@ modules. Installable as a PWA, and it works offline once loaded.
   covers. The app names the sleeves that set the start date and says how far back you'd get
   without them. *From* and *To* narrow the window.
 - **Objectives:**
-  - *Max Sharpe* (tangency)
+  - *Max Sharpe* (tangency), optionally with a **max volatility** and/or **min return**. The
+    answer is the best Sharpe that meets them: if the unconstrained max Sharpe already does, it
+    stays; otherwise it's the frontier portfolio at the limit that binds, and the app says which.
   - *Min volatility*
   - *Max return at a volatility*
   - *Min volatility for a return*

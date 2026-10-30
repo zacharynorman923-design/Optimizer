@@ -28,6 +28,7 @@ let bundle, cov, sleeves, ids, defaultOn = {};
 const isOn = (id) => (id in state.include ? state.include[id] : defaultOn[id] !== false);
 let state = {
   include: {}, lo: {}, hi: {}, custom: {}, classLo: {}, classHi: {}, limitOf: {}, objective: 'maxSharpe', target: null,
+  sharpeMaxVol: null, sharpeMinRet: null,
   start: 'earliest', end: 'latest', rebalance: 'annual', benchmark: 'US_LargeCap',
 };
 
@@ -145,6 +146,14 @@ for (const [el, key] of [['objective', 'objective'], ['rebalance', 'rebalance'],
     update();
   });
 }
+for (const [el, key] of [['sharpeMaxVol', 'sharpeMaxVol'], ['sharpeMinRet', 'sharpeMinRet']]) {
+  $(el).addEventListener('input', (e) => {
+    const v = parseFloat(e.target.value);
+    state[key] = Number.isFinite(v) ? v : null;
+    update(350);
+  });
+}
+
 $('target').addEventListener('input', (e) => {
   const v = parseFloat(e.target.value);
   state.target = Number.isFinite(v) ? v : null;
@@ -183,6 +192,13 @@ function syncControls(win) {
   $('rebalance').value = state.rebalance;
   $('benchSel').value = state.benchmark;
   const tgt = state.objective === 'targetVol' || state.objective === 'targetRet';
+  // Max Sharpe swaps the target box for its optional volatility cap and return floor
+  const ms = state.objective === 'maxSharpe';
+  $('targetFld').classList.toggle('hidden', ms);
+  document.querySelectorAll('.sharpe-lim').forEach((el) => el.classList.toggle('hidden', !ms));
+  for (const k of ['sharpeMaxVol', 'sharpeMinRet']) {
+    if (document.activeElement !== $(k)) $(k).value = state[k] != null ? state[k] : '';
+  }
   $('targetFld').classList.toggle('disabled', !tgt);
   $('target').disabled = !tgt;
   $('targetLbl').textContent = state.objective === 'targetRet' ? 'Target return (%)' : 'Target volatility (%)';
@@ -270,7 +286,15 @@ function run() {
       if (tot && out.length) msg += `${msg ? ' ' : ''}Your weights are outside the ${out.map((g) => g.name).join(' and ')} limit${out.length > 1 ? 's' : ''} (limits don't apply to your own weights).`;
       break;
     }
-    default: chosen = sharpeP;
+    default: {
+      const lim = { maxVol: state.sharpeMaxVol != null ? state.sharpeMaxVol / 100 : null,
+        minRet: state.sharpeMinRet != null ? state.sharpeMinRet / 100 : null };
+      chosen = O.maxSharpeWithin(ctx, front, lim);
+      const free = `Unconstrained max Sharpe: ${pct(sharpeP.ret)} return, ${pct(sharpeP.vol)} volatility, Sharpe ${sharpeP.sharpe.toFixed(2)}.`;
+      if (chosen.infeasible) msg = `No portfolio meets ${lim.maxVol != null && lim.minRet != null ? 'both limits' : 'that limit'}: ${chosen.infeasible}. Showing the closest one.`;
+      else if (chosen.binding === 'maxVol') msg = `Volatility capped at ${pct(lim.maxVol)}, so this is the best Sharpe at or under the cap. ${free}`;
+      else if (chosen.binding === 'minRet') msg = `Return floor of ${pct(lim.minRet)}, so this is the best Sharpe that earns at least that. ${free}`;
+    }
   }
   status(msg ? esc(msg) : '', 'warn');
   $('results').classList.remove('hidden');
@@ -362,7 +386,9 @@ function renderClassMix(groups, w) {
 }
 
 function renderKpis(chosen, pm) {
-  $('portTag').textContent = OBJECTIVES[state.objective];
+  const lims = state.objective === 'maxSharpe'
+    ? [state.sharpeMaxVol != null && `vol ≤ ${state.sharpeMaxVol}%`, state.sharpeMinRet != null && `return ≥ ${state.sharpeMinRet}%`].filter(Boolean) : [];
+  $('portTag').textContent = OBJECTIVES[state.objective] + (lims.length ? ` (${lims.join(', ')})` : '');
   const k = (label, v) => `<div class="kpi"><div class="k">${label}</div><div class="v">${v}</div></div>`;
   $('kpis').innerHTML = k('Return', pct(chosen.ret)) + k('Volatility', pct(chosen.vol))
     + k('Sharpe', Number.isFinite(chosen.sharpe) ? chosen.sharpe.toFixed(2) : '—') + k('CAGR', pct(pm.cagr));
