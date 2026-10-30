@@ -63,7 +63,9 @@ AQR_COLUMN = "Excess return of equal-weight commodities portfolio"
 # so ask for an explicit date range. period2 is filled in at download time.
 TSMOM_URL = ("https://www.aqr.com/-/media/AQR/Documents/Insights/Data-Sets/"
              "Time-Series-Momentum-Factors-Monthly.xlsx")
-# AQMIX (AQR Managed Futures Strategy Fund, Class I) carries Trend forward after AQR's last month.
+# AQMIX (AQR Managed Futures Strategy Fund, Class I) supplies Trend from TREND_FUND_FROM onward (so the
+# current year matches the real fund), and also after AQR's last month if that is earlier.
+TREND_FUND_FROM = "2026-01-31"
 AQMIX_URL = ("https://query1.finance.yahoo.com/v8/finance/chart/AQMIX"
              "?period1=1230768000&period2={now}&interval=1d&events=div%7CcapitalGain")
 HGER_URL = ("https://query1.finance.yahoo.com/v8/finance/chart/HGER"
@@ -664,13 +666,18 @@ def build_hedge_proxies(csvs: dict[str, Path], ff3_m: pd.DataFrame, skip: bool) 
     except Exception as exc:  # the sleeve just ends at AQR's last month
         log(f"  WARNING: AQMIX unavailable ({exc}); Trend ends at AQR's last month")
         aqmix = pd.Series(dtype=float, index=pd.DatetimeIndex([]))
-    trend = pd.concat([factor, aqmix[aqmix.index > last]])
-    table = pd.DataFrame({"return": trend, "source": np.where(trend.index <= last, "AQR TSMOM + RF", "AQMIX"),
+    switch = min(pd.Timestamp(TREND_FUND_FROM), last + pd.offsets.MonthEnd(1))
+    if len(aqmix) and aqmix.index[0] <= switch:
+        trend = pd.concat([factor[factor.index < switch], aqmix[aqmix.index >= switch]])
+    else:  # AQMIX unavailable: factor only
+        trend = factor
+    from_fund = trend.index >= switch if len(aqmix) else np.zeros(len(trend), bool)
+    table = pd.DataFrame({"return": trend, "source": np.where(from_fund, "AQMIX", "AQR TSMOM + RF"),
                           "factor_total": factor.reindex(trend.index), "fund_total": aqmix.reindex(trend.index)})
     table.index.name = "date"
     out = {"Trend": trend, "Equity_LS": (0.5 * ff3_m["HML"] + 0.5 * mom + rf).dropna()}
     span = f"{aqmix.index[0]:%Y-%m} to {aqmix.index[-1]:%Y-%m}" if len(aqmix) else "not available"
-    log(f"  Trend: AQR TSMOM + RF {factor.index[0]:%Y-%m} to {last:%Y-%m}, AQMIX {span}; "
+    log(f"  Trend: AQR TSMOM + RF {factor.index[0]:%Y-%m} to {last:%Y-%m}, AQMIX {span} (used from {switch:%Y-%m}); "
         f"Equity_LS (HML + Mom): {out['Equity_LS'].index[0]:%Y-%m} to {out['Equity_LS'].index[-1]:%Y-%m}")
     now = dt.datetime.now().isoformat(timespec="seconds")
     cuts = [{"file": "AQR Time Series Momentum: Factors, Monthly", "csv": tsmom_path.name,
