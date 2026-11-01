@@ -24,6 +24,8 @@ const OBJECTIVES = {
 };
 
 let bundle, cov, sleeves, ids, defaultOn = {};
+// the max-Sharpe limits actually used (the benchmark defaults when the boxes are blank)
+let sharpeLim = { maxVol: null, minRet: null };
 // ticked unless you've changed it; some sleeves start unticked (see default_on in the data)
 const isOn = (id) => (id in state.include ? state.include[id] : defaultOn[id] !== false);
 let state = {
@@ -123,7 +125,7 @@ $('sleeves').addEventListener('input', (e) => {
 // Back to defaults: sleeves 0–100% of the portfolio, classes 0–100%, no custom weights.
 // Which sleeves are ticked, the objective and the window stay as they are.
 $('resetBtn').onclick = () => {
-  Object.assign(state, { lo: {}, hi: {}, limitOf: {}, custom: {}, classLo: {}, classHi: {} });
+  Object.assign(state, { lo: {}, hi: {}, limitOf: {}, custom: {}, classLo: {}, classHi: {}, sharpeMaxVol: null, sharpeMinRet: null });
   renderSleeves();
   renderClasses();
   update();
@@ -307,8 +309,15 @@ function run() {
       break;
     }
     default: {
-      const lim = { maxVol: state.sharpeMaxVol != null ? state.sharpeMaxVol / 100 : null,
-        minRet: state.sharpeMinRet != null ? state.sharpeMinRet / 100 : null };
+      // blank boxes follow the benchmark: its volatility as the cap, its return + 1% as the floor
+      const bp = point(state.benchmark, s.dates);
+      const auto = bp ? { maxVol: bp.vol, minRet: bp.ret + 0.01 } : { maxVol: null, minRet: null };
+      const bl = SHORT[state.benchmark] || state.benchmark;
+      $('sharpeMaxVol').placeholder = bp ? `${bl}: ${(auto.maxVol * 100).toFixed(1)}` : 'no cap';
+      $('sharpeMinRet').placeholder = bp ? `${bl} + 1: ${(auto.minRet * 100).toFixed(1)}` : 'no floor';
+      const lim = { maxVol: state.sharpeMaxVol != null ? state.sharpeMaxVol / 100 : auto.maxVol,
+        minRet: state.sharpeMinRet != null ? state.sharpeMinRet / 100 : auto.minRet };
+      sharpeLim = lim;
       chosen = O.maxSharpeWithin(ctx, front, lim);
       const free = `Unconstrained max Sharpe: ${pct(sharpeP.ret)} return, ${pct(sharpeP.vol)} volatility, Sharpe ${sharpeP.sharpe.toFixed(2)}.`;
       if (chosen.infeasible) msg = `No portfolio meets ${lim.maxVol != null && lim.minRet != null ? 'both limits' : 'that limit'}: ${chosen.infeasible}. Showing the closest one.`;
@@ -408,7 +417,7 @@ function renderClassMix(groups, w) {
 
 function renderKpis(chosen, pm) {
   const lims = state.objective === 'maxSharpe'
-    ? [state.sharpeMaxVol != null && `vol ≤ ${state.sharpeMaxVol}%`, state.sharpeMinRet != null && `return ≥ ${state.sharpeMinRet}%`].filter(Boolean)
+    ? [sharpeLim.maxVol != null && `vol ≤ ${pct(sharpeLim.maxVol)}`, sharpeLim.minRet != null && `return ≥ ${pct(sharpeLim.minRet)}`].filter(Boolean)
     : state.objective === 'maxAlpha'
       ? [state.alphaMinBeta != null && `β ≥ ${state.alphaMinBeta}`, state.alphaMaxBeta != null && `β ≤ ${state.alphaMaxBeta}`].filter(Boolean) : [];
   $('portTag').textContent = OBJECTIVES[state.objective] + (lims.length ? ` (${lims.join(', ')})` : '');
