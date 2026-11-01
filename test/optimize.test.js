@@ -236,3 +236,37 @@ test('impossible vol cap / return floor are explained', () => {
   assert.match(O.maxSharpeWithin(ctx, f, { minRet: 0.5 }).infeasible, /highest return available/);
   assert.match(O.maxSharpeWithin(ctx, f, { maxVol: 0.16, minRet: 0.115 }).infeasible, /takes .* volatility, above the 16.0% cap/);
 });
+
+// ------------------------------------------------- max alpha subject to beta
+test('alpha and beta match a direct regression, and combine linearly', () => {
+  const b = [0.02, -0.01, 0.03, 0.00, -0.02, 0.015], rf0 = b.map(() => 0.001);
+  // sleeve 0 = 0.5 × benchmark excess + 0.002 alpha; sleeve 1 = 1.5 × benchmark excess
+  const M = b.map((x, t) => [rf0[t] + 0.5 * (x - rf0[t]) + 0.002, rf0[t] + 1.5 * (x - rf0[t])]);
+  const ab = O.alphaBeta(M, b, rf0);
+  near(ab.beta[0], 0.5); near(ab.alpha[0], 0.024); near(ab.beta[1], 1.5); near(ab.alpha[1], 0);
+});
+
+test('max alpha with a beta range beats every feasible portfolio on a fine grid', () => {
+  const alpha = [0.04, 0.01, 0.02], beta = [1.2, 0.2, 0.6];
+  const cv = [[0.04, 0.01, 0.01], [0.01, 0.02, 0.005], [0.01, 0.005, 0.03]];
+  const lo3 = [0, 0, 0], hi3 = [1, 1, 1];
+  for (const [mn, mx] of [[null, 0.5], [0.4, 0.8], [0.9, null]]) {
+    const r = O.maxAlpha({ alpha, beta, cov: cv, lo: lo3, hi: hi3, minBeta: mn, maxBeta: mx });
+    assert.ok(!r.infeasible);
+    near(sum(r.w), 1, 1e-8);
+    if (mx != null) assert.ok(r.beta <= mx + 1e-6); if (mn != null) assert.ok(r.beta >= mn - 1e-6);
+    let best = -Infinity;
+    for (let a = 0; a <= 100; a++) for (let b = 0; a + b <= 100; b++) {
+      const w = [a / 100, b / 100, 1 - a / 100 - b / 100], bt = dot(w, beta);
+      if ((mx == null || bt <= mx + 1e-12) && (mn == null || bt >= mn - 1e-12)) best = Math.max(best, dot(w, alpha));
+    }
+    assert.ok(r.alpha >= best - 1e-6, `alpha ${r.alpha} < grid best ${best}`);
+  }
+});
+
+test('unreachable beta ranges are explained', () => {
+  const r = O.maxAlpha({ alpha: [0.01, 0.02], beta: [0.3, 0.8], cov: [[0.02, 0], [0, 0.03]], lo: [0, 0], hi: [1, 1], maxBeta: 0.1 });
+  assert.match(r.infeasible, /lowest beta available is 0.30, above the 0.10 maximum/);
+  const r2 = O.maxAlpha({ alpha: [0.01, 0.02], beta: [0.3, 0.8], cov: [[0.02, 0], [0, 0.03]], lo: [0, 0], hi: [1, 1], minBeta: 1 });
+  assert.match(r2.infeasible, /highest beta available is 0.80/);
+});

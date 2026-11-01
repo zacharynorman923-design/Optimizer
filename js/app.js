@@ -19,7 +19,7 @@ const KEY = 'optimizer-state-v1', THEME_KEY = 'optimizer-theme';
 const US_1926 = ['US_LargeCap', 'US_SmallValue', 'US_SmallGrowth', 'US_LargeValue', 'US_LargeGrowth', 'Cash'];
 const CLASSES = ['Equity', 'Fixed income', 'Alts'];
 const OBJECTIVES = {
-  maxSharpe: 'Max Sharpe', minVar: 'Min volatility', targetVol: 'Max return at a volatility',
+  maxSharpe: 'Max Sharpe', minVar: 'Min volatility', targetVol: 'Max return at a volatility', maxAlpha: 'Max alpha at a beta',
   targetRet: 'Min volatility for a return', equal: 'Equal weight', custom: 'My own weights',
 };
 
@@ -28,7 +28,7 @@ let bundle, cov, sleeves, ids, defaultOn = {};
 const isOn = (id) => (id in state.include ? state.include[id] : defaultOn[id] !== false);
 let state = {
   include: {}, lo: {}, hi: {}, custom: {}, classLo: {}, classHi: {}, limitOf: {}, objective: 'maxSharpe', target: null,
-  sharpeMaxVol: null, sharpeMinRet: null,
+  sharpeMaxVol: null, sharpeMinRet: null, alphaMinBeta: null, alphaMaxBeta: 1,
   start: 'earliest', end: 'latest', rebalance: 'annual', benchmark: 'US_LargeCap',
 };
 
@@ -146,7 +146,7 @@ for (const [el, key] of [['objective', 'objective'], ['rebalance', 'rebalance'],
     update();
   });
 }
-for (const [el, key] of [['sharpeMaxVol', 'sharpeMaxVol'], ['sharpeMinRet', 'sharpeMinRet']]) {
+for (const [el, key] of [['sharpeMaxVol', 'sharpeMaxVol'], ['sharpeMinRet', 'sharpeMinRet'], ['alphaMinBeta', 'alphaMinBeta'], ['alphaMaxBeta', 'alphaMaxBeta']]) {
   $(el).addEventListener('input', (e) => {
     const v = parseFloat(e.target.value);
     state[key] = Number.isFinite(v) ? v : null;
@@ -193,10 +193,11 @@ function syncControls(win) {
   $('benchSel').value = state.benchmark;
   const tgt = state.objective === 'targetVol' || state.objective === 'targetRet';
   // Max Sharpe swaps the target box for its optional volatility cap and return floor
-  const ms = state.objective === 'maxSharpe';
-  $('targetFld').classList.toggle('hidden', ms);
+  const ms = state.objective === 'maxSharpe', ma = state.objective === 'maxAlpha';
+  $('targetFld').classList.toggle('hidden', ms || ma);
   document.querySelectorAll('.sharpe-lim').forEach((el) => el.classList.toggle('hidden', !ms));
-  for (const k of ['sharpeMaxVol', 'sharpeMinRet']) {
+  document.querySelectorAll('.alpha-lim').forEach((el) => el.classList.toggle('hidden', !ma));
+  for (const k of ['sharpeMaxVol', 'sharpeMinRet', 'alphaMinBeta', 'alphaMaxBeta']) {
     if (document.activeElement !== $(k)) $(k).value = state[k] != null ? state[k] : '';
   }
   $('targetFld').classList.toggle('disabled', !tgt);
@@ -259,8 +260,27 @@ function run() {
     return { w, ret, vol, sharpe: (ret - mo.rf) / vol };
   };
 
+  // alpha and beta of every sleeve against the chosen benchmark, over the same months
+  const benchR = column(bundle, state.benchmark, s.dates);
+  const ab = O.alphaBeta(s.matrix, benchR, s.rf);
+
   let chosen, msg = '';
   switch (state.objective) {
+    case 'maxAlpha': {
+      const bl = SHORT[state.benchmark] || state.benchmark;
+      const r = O.maxAlpha({ alpha: ab.alpha, beta: ab.beta, cov: mo.cov, lo, hi, groups, rel,
+        minBeta: state.alphaMinBeta, maxBeta: state.alphaMaxBeta });
+      if (r.infeasible) {
+        msg = `No portfolio within these limits has that beta to ${bl}: ${r.infeasible} (available: ${r.range[0].toFixed(2)} to ${r.range[1].toFixed(2)}). Showing max Sharpe instead.`;
+        chosen = sharpeP;
+      } else {
+        chosen = evalW(r.w);
+        const top2 = r.w.slice().sort((a, b) => b - a).slice(0, 2).reduce((a, b) => a + b, 0);
+        if (state.alphaMinBeta == null && state.alphaMaxBeta == null) msg = 'With no beta limit, max alpha just piles into the highest-alpha sleeves. Set a beta range to make it meaningful.';
+        else if (top2 > 0.95) msg = `Alpha and beta both scale linearly with the weights, so the best answer sits in one or two sleeves (here ${pct(top2, 0)}). Add sleeve or asset-class limits to spread it out.`;
+      }
+      break;
+    }
     case 'minVar': chosen = minP; break;
     case 'targetVol':
     case 'targetRet': {
@@ -301,7 +321,8 @@ function run() {
 
   // backtest the chosen weights and the benchmark over the same months
   const portR = S.backtest(s.dates, s.matrix, chosen.w, state.rebalance);
-  const benchR = column(bundle, state.benchmark, s.dates);
+  const pa = chosen.w.reduce((a, w, i) => a + w * ab.alpha[i], 0), pb = chosen.w.reduce((a, w, i) => a + w * ab.beta[i], 0);
+  $('abLine').textContent = `Against ${SHORT[state.benchmark] || state.benchmark}: alpha ${pa >= 0 ? '+' : ''}${pct(pa)} a year · beta ${pb.toFixed(2)}`;
   const pm = S.metrics(portR, s.rf), bm = S.metrics(benchR, s.rf);
   const py = S.calendarYears(s.dates, portR), by = S.calendarYears(s.dates, benchR);
   const years = py.map((p, i) => ({ year: p.year, partial: p.partial, port: p.ret, bench: by[i].ret }));
@@ -387,7 +408,9 @@ function renderClassMix(groups, w) {
 
 function renderKpis(chosen, pm) {
   const lims = state.objective === 'maxSharpe'
-    ? [state.sharpeMaxVol != null && `vol ≤ ${state.sharpeMaxVol}%`, state.sharpeMinRet != null && `return ≥ ${state.sharpeMinRet}%`].filter(Boolean) : [];
+    ? [state.sharpeMaxVol != null && `vol ≤ ${state.sharpeMaxVol}%`, state.sharpeMinRet != null && `return ≥ ${state.sharpeMinRet}%`].filter(Boolean)
+    : state.objective === 'maxAlpha'
+      ? [state.alphaMinBeta != null && `β ≥ ${state.alphaMinBeta}`, state.alphaMaxBeta != null && `β ≤ ${state.alphaMaxBeta}`].filter(Boolean) : [];
   $('portTag').textContent = OBJECTIVES[state.objective] + (lims.length ? ` (${lims.join(', ')})` : '');
   const k = (label, v) => `<div class="kpi"><div class="k">${label}</div><div class="v">${v}</div></div>`;
   $('kpis').innerHTML = k('Return', pct(chosen.ret)) + k('Volatility', pct(chosen.vol))

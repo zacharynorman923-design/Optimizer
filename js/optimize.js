@@ -229,14 +229,15 @@ function cholSolve(L, b) {
   return y;
 }
 
-function buildQP(cov, lo, hi, groups, halves) {
+function buildQP(cov, lo, hi, groups, halves, extra = [], pScale = 1) {
   const n = lo.length, A = [], l = [], u = [], R = [];
   const row = (a, lb, ub, r) => { A.push(a); l.push(lb); u.push(ub); R.push(r); };
   row(new Array(n).fill(1), 1, 1, RHO * 1e3);                       // fully invested (equality)
   for (let i = 0; i < n; i++) { const a = new Array(n).fill(0); a[i] = 1; row(a, lo[i], hi[i], RHO); }
   for (const g of groups) { const a = new Array(n).fill(0); g.members.forEach((i) => { a[i] = 1; }); row(a, g.lo, g.hi, RHO); }
   for (const h of halves) row(h.a, -BIG, 0, RHO);
-  const P = cov.map((r) => r.map((x) => 2 * x));
+  for (const e of extra) row(e.a, e.lo ?? -BIG, e.hi ?? BIG, RHO);       // e.g. lo ≤ β·w ≤ hi
+  const P = cov.map((r) => r.map((x) => 2 * x * pScale));
   const M = P.map((r, i) => r.map((x, j) => x + (i === j ? SIGMA : 0) + A.reduce((s, a, k) => s + R[k] * a[i] * a[j], 0)));
   return { A, l, u, R, P, L: cholesky(M), n, m: A.length };
 }
@@ -341,11 +342,11 @@ export function maxReturnAll(ctx) {
 }
 
 /* Everything the solvers share for one set of inputs. */
-export function context(mu, cov, rf, lo, hi, groups = [], rel = []) {
+export function context(mu, cov, rf, lo, hi, groups = [], rel = [], extra = [], pScale = 1) {
   const L = 2 * maxEigen(cov) || 1;
   const scale = cov.reduce((s, row, i) => s + row[i], 0) / mu.length / (mean(mu.map(Math.abs)) || 1);
   const halves = relativeHalfspaces(rel, mu.length);
-  const qp = halves.length ? buildQP(cov, lo, hi, groups, halves) : null;
+  const qp = halves.length || extra.length ? buildQP(cov, lo, hi, groups, halves, extra, pScale) : null;
   return { mu, cov, rf, lo, hi, groups, halves, qp, step: 1 / L, gMin: scale * 1e-4, gMax: scale * 1e4 };
 }
 
@@ -449,4 +450,53 @@ export function maxSharpeWithin(ctx, front, { maxVol = null, minRet = null } = {
   if (best.ret < lowEnd.ret - 1e-9) return { ...lowEnd, binding: 'minRet' };
   if (best.vol > highEnd.vol + 1e-9) return { ...highEnd, binding: 'maxVol' };
   return { ...best, binding: null };
+}
+
+/* ------------------------------------------------------------ alpha subject to beta
+   Each sleeve's alpha and beta against a benchmark come from regressing its monthly excess
+   return on the benchmark's (OLS). Both are linear in the weights, so a portfolio's alpha is
+   w·α and its beta w·β, and "max alpha with beta in a range" is a linear program. It's solved
+   with the same ADMM solver, beta as one more row of limits; the covariance term stays in at
+   a tiny weight, so among equal-alpha portfolios the least risky one wins. */
+export function alphaBeta(matrix, bench, rf) {
+  const be = bench.map((b, t) => b - rf[t]);
+  const mb = mean(be);
+  const vb = be.reduce((s, x) => s + (x - mb) ** 2, 0);
+  const n = matrix[0].length, alpha = [], beta = [];
+  for (let i = 0; i < n; i++) {
+    const ex = matrix.map((row, t) => row[i] - rf[t]);
+    const me = mean(ex);
+    const b = ex.reduce((s, x, t) => s + (x - me) * (be[t] - mb), 0) / vb;
+    beta.push(b);
+    alpha.push((me - b * mb) * 12); // annualized
+  }
+  return { alpha, beta };
+}
+
+/* A well-scaled linear objective for ADMM: maximize c·w (c normalized to size ~1) with the
+   covariance kept only as a tiny tie-break (pScale), under every limit plus `extra` rows. */
+function solveLinear(c, cov, lo, hi, groups, rel, extra) {
+  const k = Math.max(...c.map(Math.abs)) || 1;
+  const ctx = context(c.map((x) => x / k), cov, 0, lo, hi, groups, rel, extra, 1e-3);
+  return solve(ctx, 1);
+}
+
+export function maxAlpha({ alpha, beta, cov, lo, hi, groups = [], rel = [], minBeta = null, maxBeta = null }) {
+  const none = [{ a: beta.map(() => 0), lo: -1, hi: 1 }]; // forces the ADMM path, constrains nothing
+  const bLo = dot(solveLinear(beta.map((b) => -b), cov, lo, hi, groups, rel, none), beta);
+  const bHi = dot(solveLinear(beta, cov, lo, hi, groups, rel, none), beta);
+  const f = (x) => x.toFixed(2);
+  if (minBeta != null && minBeta > bHi + 1e-6) return { infeasible: `the highest beta available is ${f(bHi)}, below the ${f(minBeta)} minimum`, range: [bLo, bHi] };
+  if (maxBeta != null && maxBeta < bLo - 1e-6) return { infeasible: `the lowest beta available is ${f(bLo)}, above the ${f(maxBeta)} maximum`, range: [bLo, bHi] };
+  if (minBeta != null && maxBeta != null && minBeta > maxBeta) return { infeasible: `the minimum beta (${f(minBeta)}) is above the maximum (${f(maxBeta)})`, range: [bLo, bHi] };
+  const w = solveLinear(alpha, cov, lo, hi, groups, rel, [{ a: beta, lo: minBeta, hi: maxBeta }]);
+  // check the answer against every limit before trusting it
+  const b = dot(w, beta), tol = 1e-5;
+  const ok = Math.abs(w.reduce((a, x) => a + x, 0) - 1) < tol
+    && w.every((x, i) => x >= lo[i] - tol && x <= hi[i] + tol)
+    && groups.every((g) => { const t = g.members.reduce((a, i) => a + w[i], 0); return t >= g.lo - tol && t <= g.hi + tol; })
+    && relativeHalfspaces(rel, w.length).every((h) => dot(h.a, w) <= tol)
+    && (minBeta == null || b >= minBeta - tol) && (maxBeta == null || b <= maxBeta + tol);
+  if (!ok) return { infeasible: 'the solver could not find a portfolio meeting every limit (try a wider beta range)', range: [bLo, bHi] };
+  return { w, alpha: dot(w, alpha), beta: b, range: [bLo, bHi] };
 }

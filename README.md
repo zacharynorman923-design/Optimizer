@@ -39,6 +39,12 @@ modules. Installable as a PWA, and it works offline once loaded.
     answer is the best Sharpe that meets them: if the unconstrained max Sharpe already does, it
     stays; otherwise it's the frontier portfolio at the limit that binds, and the app says which.
   - *Min volatility*
+  - *Max alpha at a beta*: the highest alpha against the chosen benchmark with the portfolio's
+    beta in a range you set (default β ≤ 1). Each sleeve's alpha and beta come from regressing its
+    monthly excess returns on the benchmark's over the window. Both are linear in the weights, so
+    this is a linear program, solved with the ADMM solver plus beta as one more limit. It tends to
+    concentrate in one or two sleeves, so use sleeve or class limits to diversify. Every objective
+    also shows the portfolio's alpha and beta against the benchmark.
   - *Max return at a volatility*
   - *Min volatility for a return*
   - *Equal weight*
