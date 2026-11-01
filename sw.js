@@ -1,6 +1,6 @@
 /* Optimizer service worker — offline app shell + return data.
    Bump VERSION on every release so clients discard the old cached shell. */
-const VERSION = 'optimizer-v14';
+const VERSION = 'optimizer-v15';
 const SHELL = `${VERSION}-shell`;
 const RUNTIME = `${VERSION}-runtime`;
 
@@ -34,8 +34,8 @@ self.addEventListener('activate', (event) => {
   );
 });
 
-/* Return data is network-first, so a data refresh shows up on the next load;
-   the cached copy keeps the app working offline. Everything else: cache-first. */
+/* App files and return data: network-first (always fresh online, cached copy offline).
+   Fonts: cache-first. */
 self.addEventListener('fetch', (event) => {
   const req = event.request;
   if (req.method !== 'GET') return;
@@ -43,12 +43,13 @@ self.addEventListener('fetch', (event) => {
 
   if (FONT_HOSTS.includes(url.hostname)) { event.respondWith(cacheFirst(req, RUNTIME)); return; }
   if (url.origin !== self.location.origin) return;
-  if (url.pathname.endsWith(DATA)) { event.respondWith(networkFirst(req, SHELL)); return; }
+  // Everything from this site is network-first: online you always get the latest app and data,
+  // offline the cached copy. (Cache-first kept showing an old version until a second reopen.)
   if (req.mode === 'navigate') {
-    event.respondWith(cacheFirst(req, SHELL).catch(() => caches.match('./index.html')));
+    event.respondWith(networkFirst(req, SHELL).catch(() => caches.match('./index.html')));
     return;
   }
-  event.respondWith(cacheFirst(req, SHELL));
+  event.respondWith(networkFirst(req, SHELL));
 });
 
 async function cacheFirst(request, cacheName) {
