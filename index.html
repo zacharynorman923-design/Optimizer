@@ -59,6 +59,7 @@
           <option value="minVar">Min volatility</option>
           <option value="targetVol">Max return at a volatility</option>
           <option value="targetRet">Min volatility for a return</option>
+          <option value="maxAlpha">Max alpha at a beta</option>
           <option value="equal">Equal weight</option>
           <option value="custom">My own weights</option>
         </select>
@@ -71,6 +72,12 @@
       </label>
       <label class="fld sharpe-lim hidden"><span>Min return (%)</span>
         <input id="sharpeMinRet" type="number" inputmode="decimal" step="0.5" placeholder="no floor">
+      </label>
+      <label class="fld alpha-lim hidden"><span>Min beta</span>
+        <input id="alphaMinBeta" type="number" inputmode="decimal" step="0.05" placeholder="no floor">
+      </label>
+      <label class="fld alpha-lim hidden"><span>Max beta</span>
+        <input id="alphaMaxBeta" type="number" inputmode="decimal" step="0.05" placeholder="no cap">
       </label>
       <label class="fld"><span>From</span><select id="startSel"></select></label>
       <label class="fld"><span>To</span><select id="endSel"></select></label>
@@ -98,6 +105,7 @@
       <div class="panel-head"><h2 id="portH">Portfolio</h2><span class="tag" id="portTag"></span></div>
       <div class="kpis" id="kpis"></div>
       <p class="class-mix" id="classMix"></p>
+      <p class="class-mix" id="abLine"></p>
       <div class="weights" id="weights"></div>
       <p class="note small">Return and volatility here are the historical annualized mean and standard deviation
         over the window — the inputs the optimizer uses. Risk is each sleeve's share of portfolio variance.</p>
