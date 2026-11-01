@@ -16,6 +16,9 @@ const pct = C.pct;
 const ym = (iso) => iso.slice(0, 7);
 
 const KEY = 'optimizer-state-v1', THEME_KEY = 'optimizer-theme';
+// Shown in the data line so it's easy to tell which version a phone is running.
+// Keep in step with VERSION in sw.js.
+const APP_VERSION = 'v16';
 const US_1926 = ['US_LargeCap', 'US_SmallValue', 'US_SmallGrowth', 'US_LargeValue', 'US_LargeGrowth', 'Cash'];
 const CLASSES = ['Equity', 'Fixed income', 'Alts'];
 const OBJECTIVES = {
@@ -536,7 +539,7 @@ function renderYears(years) {
   ids = sleeves.map((s) => s.sleeve);
   sleeves.forEach((s) => { defaultOn[s.sleeve] = s.default_on !== false; });
   const cut = [...new Set(Object.values(bundle.data_cut))].join(', ');
-  $('dataLine').textContent = `Ken French Data Library · data cut ${cut} · built ${bundle.generated_at.slice(0, 10)}`;
+  $('dataLine').textContent = `Ken French Data Library · data cut ${cut} · built ${bundle.generated_at.slice(0, 10)} · app ${APP_VERSION}`;
   $('benchSel').innerHTML = `<optgroup label="Benchmarks">${bundle.benchmarks.list.map((b) => `<option value="${b.id}">${esc(b.name)}</option>`).join('')}</optgroup>`
     + `<optgroup label="Sleeves">${sleeves.map((s) => `<option value="${s.sleeve}">${esc(s.name)}</option>`).join('')}</optgroup>`;
   renderSleeves();

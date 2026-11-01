@@ -1,6 +1,6 @@
 /* Optimizer service worker — offline app shell + return data.
    Bump VERSION on every release so clients discard the old cached shell. */
-const VERSION = 'optimizer-v15';
+const VERSION = 'optimizer-v16';
 const SHELL = `${VERSION}-shell`;
 const RUNTIME = `${VERSION}-runtime`;
 
@@ -22,7 +22,11 @@ const FONT_HOSTS = ['fonts.googleapis.com', 'fonts.gstatic.com'];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(SHELL).then((c) => c.addAll([...SHELL_ASSETS, `./${DATA}`])).then(() => self.skipWaiting())
+    // cache: 'reload' skips the browser's HTTP cache (GitHub Pages lets it keep files ~10 min), so a
+    // new version never stores the previous version's files under its own name
+    caches.open(SHELL)
+      .then((c) => c.addAll([...SHELL_ASSETS, `./${DATA}`].map((u) => new Request(u, { cache: 'reload' }))))
+      .then(() => self.skipWaiting())
   );
 });
 
