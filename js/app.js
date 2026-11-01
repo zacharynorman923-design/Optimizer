@@ -18,7 +18,7 @@ const ym = (iso) => iso.slice(0, 7);
 const KEY = 'optimizer-state-v1', THEME_KEY = 'optimizer-theme';
 // Shown in the data line so it's easy to tell which version a phone is running.
 // Keep in step with VERSION in sw.js.
-const APP_VERSION = 'v16';
+const APP_VERSION = 'v17';
 const US_1926 = ['US_LargeCap', 'US_SmallValue', 'US_SmallGrowth', 'US_LargeValue', 'US_LargeGrowth', 'Cash'];
 const CLASSES = ['Equity', 'Fixed income', 'Alts'];
 const OBJECTIVES = {
@@ -147,7 +147,7 @@ document.querySelectorAll('[data-preset]').forEach((b) => {
 for (const [el, key] of [['objective', 'objective'], ['rebalance', 'rebalance'], ['benchSel', 'benchmark'], ['startSel', 'start'], ['endSel', 'end']]) {
   $(el).addEventListener('change', (e) => {
     state[key] = e.target.value;
-    if (key === 'objective') state.target = null; // re-seed the target from the new frontier
+    if (key === 'objective') state.target = null; // back to the benchmark default
     update();
   });
 }
@@ -290,12 +290,17 @@ function run() {
     case 'targetVol':
     case 'targetRet': {
       const metric = state.objective === 'targetVol' ? 'vol' : 'ret';
-      if (state.target == null) state.target = +(sharpeP[metric] * 100).toFixed(1);
-      syncControls(win);
-      chosen = O.frontierTarget(ctx, front, metric, state.target / 100);
+      // a blank box follows the benchmark: its volatility, or its CAGR (as in the Benchmarks table)
+      const bp = point(state.benchmark, s.dates);
+      const bl = SHORT[state.benchmark] || state.benchmark;
+      const auto = bp ? (metric === 'vol' ? bp.vol : S.metrics(benchR, s.rf).cagr) : sharpeP[metric];
+      $('target').placeholder = bp ? `${bl}${metric === 'vol' ? '' : ' CAGR'}: ${(auto * 100).toFixed(1)}` : '';
+      const target = state.target != null ? state.target / 100 : auto;
+      sharpeLim = metric === 'vol' ? { maxVol: target, minRet: null } : { maxVol: null, minRet: target };
+      chosen = O.frontierTarget(ctx, front, metric, target);
       const what = metric === 'vol' ? 'volatility' : 'return';
-      if (chosen.clamped === 'low') msg = `No portfolio within these limits has ${what} as low as ${state.target}%. Showing the lowest available: ${pct(chosen[metric])}.`;
-      if (chosen.clamped === 'high') msg = `No portfolio within these limits reaches ${state.target}% ${what}. Showing the highest available: ${pct(chosen[metric])}.`;
+      if (chosen.clamped === 'low') msg = `No portfolio within these limits has ${what} as low as ${pct(target)}. Showing the lowest available: ${pct(chosen[metric])}.`;
+      if (chosen.clamped === 'high') msg = `No portfolio within these limits reaches ${pct(target)} ${what}. Showing the highest available: ${pct(chosen[metric])}.`;
       break;
     }
     case 'equal': chosen = evalW(O.projectAll(inc.map(() => 1 / inc.length), lo, hi, groups, O.relativeHalfspaces(rel, inc.length))); break;
@@ -422,6 +427,8 @@ function renderClassMix(groups, w) {
 function renderKpis(chosen, pm) {
   const lims = state.objective === 'maxSharpe'
     ? [sharpeLim.maxVol != null && `vol ≤ ${pct(sharpeLim.maxVol)}`, sharpeLim.minRet != null && `return ≥ ${pct(sharpeLim.minRet)}`].filter(Boolean)
+    : state.objective === 'targetVol' ? [sharpeLim.maxVol != null && `vol ${pct(sharpeLim.maxVol)}`].filter(Boolean)
+    : state.objective === 'targetRet' ? [sharpeLim.minRet != null && `return ${pct(sharpeLim.minRet)}`].filter(Boolean)
     : state.objective === 'maxAlpha'
       ? [state.alphaMinBeta != null && `β ≥ ${state.alphaMinBeta}`, state.alphaMaxBeta != null && `β ≤ ${state.alphaMaxBeta}`].filter(Boolean) : [];
   $('portTag').textContent = OBJECTIVES[state.objective] + (lims.length ? ` (${lims.join(', ')})` : '');
