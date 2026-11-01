@@ -186,7 +186,9 @@
 <script type="module" src="js/app.js"></script>
 <script>
   if ('serviceWorker' in navigator) {
-    window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
+    // check for a new version on every launch (and skip the HTTP cache for sw.js itself)
+    window.addEventListener('load', () => navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' })
+      .then((r) => r.update()).catch(() => {}));
     // when a new version takes over an already-open page, reload once so it's what you see
     let reloaded = false;
     const hadController = !!navigator.serviceWorker.controller;
