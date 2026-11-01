@@ -309,12 +309,13 @@ function run() {
       break;
     }
     default: {
-      // blank boxes follow the benchmark: its volatility as the cap, its return + 1% as the floor
+      // blank boxes follow the benchmark: its volatility as the cap, its CAGR + 1% as the floor
+      // (CAGR, as shown in the Benchmarks table, rather than its average yearly return)
       const bp = point(state.benchmark, s.dates);
-      const auto = bp ? { maxVol: bp.vol, minRet: bp.ret + 0.01 } : { maxVol: null, minRet: null };
+      const auto = bp ? { maxVol: bp.vol, minRet: S.metrics(benchR, s.rf).cagr + 0.01 } : { maxVol: null, minRet: null };
       const bl = SHORT[state.benchmark] || state.benchmark;
       $('sharpeMaxVol').placeholder = bp ? `${bl}: ${(auto.maxVol * 100).toFixed(1)}` : 'no cap';
-      $('sharpeMinRet').placeholder = bp ? `${bl} + 1: ${(auto.minRet * 100).toFixed(1)}` : 'no floor';
+      $('sharpeMinRet').placeholder = bp ? `${bl} CAGR + 1: ${(auto.minRet * 100).toFixed(1)}` : 'no floor';
       const lim = { maxVol: state.sharpeMaxVol != null ? state.sharpeMaxVol / 100 : auto.maxVol,
         minRet: state.sharpeMinRet != null ? state.sharpeMinRet / 100 : auto.minRet };
       sharpeLim = lim;
