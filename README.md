@@ -103,12 +103,14 @@ The return series are built by `scripts/update_french_data.py`. The equity sleev
 cash come from the
 [Ken French Data Library](https://mba.tuck.dartmouth.edu/pages/faculty/Ken.French/data_library.html).
 The 1-, 5- and 10-year Treasury sleeves (from 1962) are total returns rebuilt from the
-Federal Reserve's H.15 constant-maturity yields. Commodities are AQR's long-run
-commodity-futures index plus T-bills, continued with the HGER ETF after AQR's data ends
-(May 2025 at present). Two hedge-strategy proxies come from academic long/short factors:
-Trend (AQR's time-series momentum factor from 1985 through 2025, less a 2% a year fee, then
-AQR's own fund, AQMIX, from January 2026) and Equity long/short (French's value
-plus momentum factors, from 1927).
+Federal Reserve's H.15 constant-maturity yields. The three alternatives use real funds after
+their launch dates and research proxies before:
+- **Commodities:** HGER from 2022. Before that, AQR's long-run commodity-futures index plus
+  T-bills plus HGER's premium over it.
+- **Trend:** AQMIX from 2010. Before that, AQR's time-series momentum factor, less 2% a year.
+- **Equity long/short:** QLEIX from 2013. Before that, French's value + momentum factors.
+
+All sleeves stop at French's latest month, so they share one end date.
 
 To refresh when French posts new data:
 
@@ -156,11 +158,12 @@ publishes it. Any static host works too, with no build command and `/` as the pu
 - **Treasury returns are rebuilt from yields**, so they are close to, not identical to, index
   returns. They are within about 1–2 points a year of published figures, with larger gaps in
   years of big rate moves.
-- **Hedge-strategy proxies are paper portfolios before fees.** Trend especially shows returns
-  that real trend-following funds didn't keep after their fees (typically 2% of assets plus
-  20% of profits) and trading costs. AQR's own managed-futures fund, AQMIX, returned about 2%
-  a year less than the factor from 2010 to 2026. Cap their weights, or treat the results as an
-  upper bound.
+- **The alternatives join real funds to research proxies.** Commodities, Trend and Equity long/short
+  use real funds (HGER from 2022, AQMIX from 2010, QLEIX from 2013) after their launch dates and
+  research proxies before. Proxy months are paper returns, with a 3.4%/yr premium added to
+  commodities and a 2%/yr fee taken from trend. QLEIX in particular is a different strategy from
+  its value + momentum proxy (correlation 0.20), so that sleeve's history before 2013 is a
+  different animal.
 - **Commodities join two sources.** AQR's paper index runs through May 2025, and HGER's
   actual net-of-fee returns follow. They correlated 0.86 where both exist, but they follow
   different index rules.
