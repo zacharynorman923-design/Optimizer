@@ -22,10 +22,11 @@ All files come from the [Kenneth R. French Data Library](https://mba.tuck.dartmo
 | `F-F_Research_Data_Factors_CSV.zip` | Mkt-RF and RF (US market, cash) |
 | `F-F_Research_Data_5_Factors_2x3_CSV.zip` | 5 factors for the DFAT regression |
 | AQR "Commodities for the Long Run: Index Level Data, Monthly" ([page](https://www.aqr.com/Insights/Datasets/Commodities-for-the-Long-Run-Index-Level-Data-Monthly)) | Commodity futures returns through AQR's last month |
-| HGER (Harbor Commodity All-Weather Strategy ETF), daily dividend-adjusted closes from Yahoo Finance | Commodity returns after AQR's last month |
+| HGER (Harbor Commodity All-Weather Strategy ETF), daily dividend-adjusted closes from Yahoo Finance | Commodities from 2022-03 |
 | `F-F_Momentum_Factor_CSV.zip` (French) | Momentum factor (Mom) for the equity long/short sleeve |
 | AQR "Time Series Momentum: Factors, Monthly" ([page](https://www.aqr.com/Insights/Datasets/Time-Series-Momentum-Factors-Monthly)) | Trend-following sleeve |
-| AQMIX (AQR Managed Futures Strategy Fund, Class I), daily dividend-adjusted closes from Yahoo Finance | Trend after AQR's last month |
+| AQMIX (AQR Managed Futures Strategy Fund, Class I), daily dividend-adjusted closes from Yahoo Finance | Trend from 2010-02 |
+| QLEIX (AQR Long-Short Equity Fund, Class I), daily dividend-adjusted closes from Yahoo Finance | Equity_LS from 2013-08 |
 | Federal Reserve H.15, daily Treasury constant-maturity yields ([download page](https://www.federalreserve.gov/datadownload/Choose.aspx?rel=H15)) | Yields for the Treasury sleeves |
 | `6_Portfolios_2x3_CSV.zip` | US size × book-to-market portfolios |
 | `6_Portfolios_ME_OP_2x3_CSV.zip` | US size × operating-profitability portfolios |
@@ -55,9 +56,9 @@ Each sleeve keeps its own start date: earlier months are blank, not truncated.
 | EM_SmallValue / LargeValue / Market | Same as Developed, from the EM file | Diversified Emerging Mkts |
 | Cash | RF (1-month T-bill) | Money Market-Taxable |
 
-| Commodities | AQR equal-weight commodity futures excess return + RF; HGER total return after AQR's last month | Commodities Broad Basket |
-| Trend | AQR time-series momentum factor (all assets) + RF − 2%/yr fee through 2025; AQMIX total return from January 2026 | Systematic Trend |
-| Equity_LS | 50% HML + 50% Mom (French), rebalanced monthly, + RF | Equity Market Neutral |
+| Commodities | HGER from 2022-03; before that AQR equal-weight commodity futures + RF + HGER's premium | Commodities Broad Basket |
+| Trend | AQMIX from 2010-02; before that AQR time-series momentum factor + RF − 2%/yr fee | Systematic Trend |
+| Equity_LS | QLEIX from 2013-08; before that 50% HML + 50% Mom (French) + RF | Equity Market Neutral |
 | UST_1Y / UST_5Y / UST_10Y | H.15 1-, 5- and 10-year constant-maturity yields, built into total returns (see below) | Short / Intermediate / Long Government |
 
 All six portfolio sleeves use French's **value-weighted** returns. Percentages are
@@ -87,63 +88,47 @@ directly because FRED refuses connections from the cloud environment this was bu
 - Corporate bonds aren't included yet. Moody's Aaa yields are only on FRED (the Fed dropped
   them from H.15 in 2016).
 
-**Commodities (AQR + HGER).** Two sources joined end to end:
-- **Through AQR's last month:** the equal-weight commodity futures portfolio from Levine, Ooi,
-  Richardson & Sasseville, "Commodities for the Long Run" (*Financial Analysts Journal*, 2018),
-  in AQR's updated dataset. AQR publishes returns in excess of T-bills, so the sleeve adds RF
-  (the Cash sleeve), the same way US Market is Mkt-RF + RF. It starts in 1926-07, when RF
-  begins, although AQR's data goes back to 1877. AQR's page says the file is updated monthly,
-  but as of October 2026 its data ends in May 2025.
-- **After that:** HGER's monthly total return, from the last dividend-adjusted daily close of
-  each month on Yahoo Finance. HGER holds T-bills as collateral, so its return is on the same
-  footing as AQR + RF. When AQR updates again, the switch-over moves later on its own.
-- **How well they match:** over March 2022 to May 2025, HGER's monthly returns correlated
-  0.86 with AQR + RF, with 6.2% a year tracking error and similar volatility (11.8% vs 11.7%).
-  HGER returned about 3.4% a year more over that stretch, despite its 0.68% expense ratio.
-  They follow different index rules, so months after the switch reflect HGER's index rather
-  than a continuation of AQR's.
-- **Fees:** the HGER months are actual fund returns, net of fees. The AQR months are a paper
-  portfolio with no costs, like French's data.
-- `commodities_splice.csv` shows both series side by side with the source of each month.
-  The `Commodities_Splice` sheet in `stats.xlsx` holds the overlap statistics.
-- AQR's disclosures: information purposes only, not investment advice, no warranty. The
-  dataset is © 2018 Levine, Ooi, Richardson and Sasseville.
+**Alternatives: real funds where they exist, proxies before.** Each of the three alternative
+sleeves uses a real fund's actual monthly returns (after fees, from Yahoo's dividend-adjusted
+daily closes) **from the fund's first full month**, and a research proxy for the years before.
+`commodities_splice.csv`, `trend_splice.csv` and `equity_ls_splice.csv` show the proxy and the
+fund side by side with the source of each month. The `Commodities_Splice`, `Trend_Splice` and
+`EquityLS_Splice` sheets in `stats.xlsx` compare them over the months both exist.
 
-**Hedge-strategy proxies (Trend, Equity_LS).** There's no broad hedge fund index before
-1990 (HFRI starts then), so these two sleeves stand in for two common hedge fund strategies,
-built from academic long/short factors:
-- **Trend:** AQR's time-series momentum factor from Moskowitz, Ooi & Pedersen, "Time Series
-  Momentum" (*Journal of Financial Economics*, 2012), updated by AQR. Each month it goes
-  long or short 58 futures and forwards (equity indexes, bonds, currencies, commodities)
-  according to their past 12-month return. AQR publishes it as an excess return, so RF is
-  added. It runs from 1985-01 to AQR's latest month, which is usually a few months behind
-  French. From **January 2026** (`TREND_FUND_FROM` in the script) the sleeve uses **AQMIX**, AQR's
-  own managed-futures mutual fund: its actual monthly returns after fees, from Yahoo with
-  distributions reinvested. That way the current year matches the real fund. Earlier months stay on
-  the factor, and if AQR's data ever ends before that date, AQMIX fills from AQR's last month.
-  - **Fee haircut:** the factor months have **2% a year subtracted, as 2%/12 each month**
-    (`TREND_FACTOR_FEE` in the script), a stand-in for fees and trading costs. The AQMIX
-    months aren't adjusted, since they're already net of the fund's fees.
-  - **How well they match:** over 2010-02 to 2026-05 the fund correlated 0.76 with the
-    factor, with 8.5% a year tracking error.
-  - **Why 2%:** before the haircut, the fund returned 4.8% a year against the factor's 6.9%,
-    at lower volatility (9.9% vs 13.0%). That's a 2.1% a year gap. After the haircut the
-    average difference is about 0.1% a year.
-  - `trend_splice.csv` and the `Trend_Splice` sheet hold the comparison. AQR's century-long
-    trend reconstruction isn't published as a download.
-- **Equity_LS:** half value (HML) and half momentum (Mom), rebalanced monthly, plus RF. These
-  are long/short US stock portfolios, the classic market-neutral pair, because value and
-  momentum tend to offset each other. Runs from 1927-01.
-- **Behaviour:** both act as expected. Trend gained +26.6% in 2008 and +26.5% in 2022, with
-  about zero correlation to stocks. Equity_LS's correlation with stocks is −0.29, and it
-  shows momentum's 2009 crash (−29.6%).
-- **These are paper returns, before any fees, trading costs or the cost of shorting.**
-  - **Trend is the most overstated.** (2026 is the exception: it's AQMIX's real return after fees.) It shows 15.7% a year since 1985 at a Sharpe of 0.98.
-    It's now shown **after a 2% a year fee haircut** (13.3% a year since 1985, Sharpe 0.82),
-    which matches AQMIX's real record on average. It's still a paper strategy, so treat it as
-    optimistic.
-  - **Equity_LS** ignores short-selling costs and momentum's high turnover.
-  - Cap their weights, or read their results as an upper bound.
+| Sleeve | Fund (from) | Proxy before the fund | Fit over the overlap |
+|---|---|---|---|
+| Commodities | **HGER** (2022-03) | AQR equal-weight commodity futures + RF **+ HGER's premium** | corr 0.86, TE 6.2%/yr (39 months) |
+| Trend | **AQMIX** (2010-02) | AQR TSMOM factor + RF **− 2%/yr fee** | corr 0.76, TE 8.5%/yr (196 months) |
+| Equity_LS | **QLEIX** (2013-08) | 50% HML + 50% Mom (French) + RF | **corr 0.20**, TE 11.8%/yr (158 months) |
+
+- **Commodities proxy:** the equal-weight portfolio from Levine, Ooi, Richardson & Sasseville,
+  "Commodities for the Long Run" (*Financial Analysts Journal*, 2018), in AQR's updated dataset.
+  - AQR publishes excess returns, so RF is added. It starts in 1926-07 (when RF begins), though
+    AQR's data goes back to 1877. AQR's file is meant to update monthly but currently ends in May 2025.
+  - **HGER premium:** while both existed (2022-03 to 2025-05), HGER beat AQR + RF by **3.43% a
+    year** on average. That average monthly difference is added to every AQR month before HGER.
+    It's estimated from only 39 months and two different index designs, so treat it as a rough
+    adjustment: it lifts the sleeve's long-run return by that much in every year back to 1926.
+- **Trend proxy:** AQR's time-series momentum factor (Moskowitz, Ooi & Pedersen, *Journal of
+  Financial Economics*, 2012): long or short 58 futures and forwards by their past-12-month
+  return. RF is added, and **2% a year is subtracted** (2%/12 a month, `TREND_FACTOR_FEE`) for fees
+  and costs. Before the fee, AQMIX trailed the factor by 2.1% a year; after it, by about 0.1%.
+  AQR's century-long trend reconstruction isn't published as a download.
+- **Equity_LS proxy:** half value (HML), half momentum (Mom), rebalanced monthly, plus RF: a
+  classic market-neutral pair from 1927.
+  - **QLEIX is a different strategy:** AQR's long/short equity fund uses many signals and keeps
+    some net market exposure (beta about 0.3 to US stocks; correlation +0.41). The proxy is
+    market-neutral (correlation −0.27).
+  - Over 2013-08 to 2026-09 QLEIX returned **12.9% a year** against the proxy's 2.9%, and their
+    monthly correlation was only 0.20. So the sleeve behaves quite differently before and after
+    August 2013. Read pre-2013 results for this sleeve as a different strategy.
+- **Fees:** fund months are net of each fund's fees. Proxy months are paper returns before
+  fees, trading and shorting costs, except Trend's 2% haircut. They tend to be optimistic, so
+  consider capping these sleeves' weights.
+- **Behaviour:** Trend gained in 2008 and 2022 while stocks fell, with about zero correlation to
+  stocks. The value + momentum proxy shows momentum's 2009 crash.
+- AQR's disclosures: information purposes only, not investment advice, no warranty. The
+  commodities dataset is © 2018 Levine, Ooi, Richardson and Sasseville.
 
 **Benchmarks (for comparison only; the optimizer doesn't use them).**
 - **Blends:** built from the same data as the sleeves. *Stocks* = US_LargeCap (French's
@@ -172,7 +157,7 @@ built from academic long/short factors:
 | `sleeve_metadata.csv` | `sleeve, name, region, morningstar_category, source_file, source_column, start_date, end_date, months, default_on, asset_class` |
 | `optimizer_returns.json` | The three files above in one bundle for the React app (blank months are `null`) |
 | `commodities_splice.csv` | The commodity sleeve with AQR and HGER side by side and the source of each month |
-| `trend_splice.csv` | The Trend sleeve with the AQR factor and AQMIX side by side and the source of each month |
+| `trend_splice.csv`, `equity_ls_splice.csv` | Trend (AQR factor / AQMIX) and Equity_LS (HML + Mom / QLEIX) side by side, with the source of each month |
 | `benchmarks_monthly.csv` | The seven benchmarks' monthly returns |
 | `stats.xlsx` | One sheet per item, listed below |
 | `dfat_extended.csv`, `dfat_regression.csv`, `dfat_synthetic_vs_actual.png` | Only when DFAT returns are provided |
@@ -187,7 +172,7 @@ built from academic long/short factors:
 - **Size_Lag_Check**: see the international market sleeves above.
 - **Commodities_Splice**: how closely HGER tracked AQR over the months both exist.
 - **Benchmarks_Full**, **Benchmarks_Calendar**, **Benchmark_Checks**: benchmark stats, calendar years, and the comparison with VBINX and VT.
-- **Trend_Splice**: how closely AQMIX tracked AQR's trend factor over the months both exist.
+- **Trend_Splice**, **EquityLS_Splice**: how closely AQMIX and QLEIX tracked their proxies over the months both exist.
 
 Sharpe = annualized mean monthly excess return over RF ÷ annualized standard deviation of
 excess returns (arithmetic, ×12 and ×√12).
