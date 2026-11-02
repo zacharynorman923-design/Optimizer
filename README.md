@@ -50,12 +50,6 @@ modules. Installable as a PWA, and it works offline once loaded.
     this is a linear program, solved with the ADMM solver plus beta as one more limit. It tends to
     concentrate in one or two sleeves, so use sleeve or class limits to diversify. Every objective
     also shows the portfolio's alpha and beta against the benchmark.
-  - *Most years ahead of benchmark*: the portfolio that beats the chosen benchmark in the most
-    complete calendar years in the window (ties go to the larger average yearly lead). With annual
-    rebalancing a year's return is exactly the weighted sum of the sleeves' returns that year, so
-    the count is searched directly: seed portfolios (frontier, max Sharpe, min vol, equal weight,
-    single sleeves, random feasible mixes), then pairwise weight shifts in shrinking steps that stay
-    within every limit. It fits past years closely, so expect fewer wins out of sample.
   - *Equal weight*
   - *My own weights*, where you type weights in the sleeve list
 

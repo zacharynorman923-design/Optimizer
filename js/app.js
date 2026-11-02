@@ -18,11 +18,11 @@ const ym = (iso) => iso.slice(0, 7);
 const KEY = 'optimizer-state-v1', THEME_KEY = 'optimizer-theme';
 // Shown in the data line so it's easy to tell which version a phone is running.
 // Keep in step with VERSION in sw.js.
-const APP_VERSION = 'v18';
+const APP_VERSION = 'v19';
 const US_1926 = ['US_LargeCap', 'US_SmallValue', 'US_SmallGrowth', 'US_LargeValue', 'US_LargeGrowth', 'Cash'];
 const CLASSES = ['Equity', 'Fixed income', 'Alts'];
 const OBJECTIVES = {
-  maxSharpe: 'Max Sharpe', minVar: 'Min volatility', targetVol: 'Max return at a volatility', maxAlpha: 'Max alpha at a beta', maxYears: 'Most years ahead of benchmark',
+  maxSharpe: 'Max Sharpe', minVar: 'Min volatility', targetVol: 'Max return at a volatility', maxAlpha: 'Max alpha at a beta',
   targetRet: 'Min volatility for a return', equal: 'Equal weight', custom: 'My own weights',
 };
 
@@ -271,23 +271,6 @@ function run() {
 
   let chosen, msg = '';
   switch (state.objective) {
-    case 'maxYears': {
-      // complete calendar years only; with annual rebalancing a year's return is Σ w·(sleeve's year)
-      const full = (r) => S.calendarYears(s.dates, r).filter((y) => !y.partial).map((y) => y.ret);
-      const cols = inc.map((_, i) => full(s.matrix.map((row) => row[i])));
-      const by = full(benchR);
-      const Y = by.map((_, k) => cols.map((c) => c[k]));
-      const bl = SHORT[state.benchmark] || state.benchmark;
-      if (Y.length < 3) { msg = 'This needs at least three complete calendar years in the window. Showing max Sharpe.'; chosen = sharpeP; break; }
-      const seeds = [...front.map((p) => p.w), sharpeP.w, minP.w, inc.map(() => 1 / inc.length)];
-      const r = O.maxYearsAhead({ Y, bench: by, lo, hi, groups, rel, seeds });
-      if (!r) { msg = 'No portfolio meets every limit. Showing max Sharpe.'; chosen = sharpeP; break; }
-      chosen = evalW(r.w);
-      msg = `Ahead of ${bl} in ${r.wins} of ${r.years} complete calendar years, by ${r.lead >= 0 ? '+' : ''}${pct(r.lead)} a year on average`
-        + (state.rebalance === 'annual' ? '.' : ' (counted with annual rebalancing; the backtest below uses your rebalancing setting).')
-        + ' Picking weights to win past years is easy to overfit, so expect fewer wins going forward.';
-      break;
-    }
     case 'maxAlpha': {
       const bl = SHORT[state.benchmark] || state.benchmark;
       const r = O.maxAlpha({ alpha: ab.alpha, beta: ab.beta, cov: mo.cov, lo, hi, groups, rel,
