@@ -270,3 +270,23 @@ test('unreachable beta ranges are explained', () => {
   const r2 = O.maxAlpha({ alpha: [0.01, 0.02], beta: [0.3, 0.8], cov: [[0.02, 0], [0, 0.03]], lo: [0, 0], hi: [1, 1], minBeta: 1 });
   assert.match(r2.infeasible, /highest beta available is 0.80/);
 });
+
+// ------------------------------------------------- most years ahead of a benchmark
+test('most years ahead matches a brute-force grid and respects limits', () => {
+  const r = rng(41);
+  for (let trial = 0; trial < 5; trial++) {
+    // 3 sleeves, 20 years of made-up calendar-year returns and a benchmark
+    const Y = Array.from({ length: 20 }, () => [r() * 0.4 - 0.15, r() * 0.2 - 0.05, r() * 0.1]);
+    const bench = Y.map((y) => 0.5 * y[0] + 0.5 * y[1] + (r() - 0.5) * 0.05);
+    const lo3 = [0, 0, 0], hi3 = [0.8, 1, 1];
+    const res = O.maxYearsAhead({ Y, bench, lo: lo3, hi: hi3 });
+    assert.ok(res.w[0] <= 0.8 + 1e-9 && Math.abs(sum(res.w) - 1) < 1e-9);
+    let gridBest = 0;
+    for (let a = 0; a <= 200; a++) for (let b = 0; a + b <= 200; b++) {
+      const w = [a / 200, b / 200, 1 - (a + b) / 200];
+      if (w[0] > 0.8) continue;
+      gridBest = Math.max(gridBest, Y.filter((y, k) => dot(y, w) > bench[k]).length);
+    }
+    assert.ok(res.wins >= gridBest, `search ${res.wins} < grid ${gridBest}`);
+  }
+});
