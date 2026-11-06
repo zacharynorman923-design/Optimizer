@@ -68,6 +68,9 @@ TSMOM_URL = ("https://www.aqr.com/-/media/AQR/Documents/Insights/Data-Sets/"
 #                + HGER's average monthly premium over that index while both existed
 #   Trend:       AQMIX (AQR Managed Futures Strategy Fund I) after AQR's TSMOM factor + RF - fee
 #   Equity_LS:   QLEIX (AQR Long-Short Equity Fund I) after 50% HML + 50% Mom + RF
+# Research Income & Growth = US market + this much a year (added as 1/12 each month).
+RESEARCH_IG_PREMIUM = 0.01
+
 # Fee-equivalent haircut on the paper TSMOM factor: 2% a year, taken as 2%/12 every month.
 # Not applied to AQMIX months, which are already net of the fund's own fees.
 TREND_FACTOR_FEE = 0.02
@@ -94,6 +97,8 @@ MISSING = (-99.99, -999.0)
 # (id, display name, region, Morningstar category, source file, source column)
 SLEEVES = [
     ("US_LargeCap", "US Large Cap (total market)", "US", "Large Blend", "ff3", "Mkt-RF + RF"),
+    ("Research_IG", "Research Income & Growth", "US", "Large Blend", "ff3",
+     "US market (Mkt-RF + RF) + 1% a year, added as 1%/12 each month"),
     ("US_SmallValue", "US Small Value", "US", "Small Value", "us_me_bm", "SMALL HiBM"),
     ("US_SmallGrowth", "US Small Growth", "US", "Small Growth", "us_me_bm", "SMALL LoBM"),
     ("US_LargeValue", "US Large Value", "US", "Large Value", "us_me_bm", "BIG HiBM"),
@@ -417,6 +422,8 @@ def build_sleeves(csvs: dict[str, Path]) -> tuple[pd.DataFrame, dict]:
 
     s = {
         "US_LargeCap": market,
+        # Research Income & Growth: the US market plus 1% a year, spread evenly as 1%/12 a month
+        "Research_IG": market + RESEARCH_IG_PREMIUM / 12,
         "US_SmallValue": us["vw_monthly"]["SMALL HiBM"],
         "US_SmallGrowth": us["vw_monthly"]["SMALL LoBM"],
         "US_LargeValue": us["vw_monthly"]["BIG HiBM"],

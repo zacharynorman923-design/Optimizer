@@ -1,5 +1,6 @@
 sleeve,name,region,morningstar_category,source_file,source_column,start_date,end_date,months,default_on,asset_class
 US_LargeCap,US Large Cap (total market),US,Large Blend,F-F_Research_Data_Factors_CSV.zip,Mkt-RF + RF,1926-07-31,2026-09-30,1203,True,Equity
+Research_IG,Research Income & Growth,US,Large Blend,F-F_Research_Data_Factors_CSV.zip,"US market (Mkt-RF + RF) + 1% a year, added as 1%/12 each month",1926-07-31,2026-09-30,1203,True,Equity
 US_SmallValue,US Small Value,US,Small Value,6_Portfolios_2x3_CSV.zip,SMALL HiBM,1926-07-31,2026-09-30,1203,True,Equity
 US_SmallGrowth,US Small Growth,US,Small Growth,6_Portfolios_2x3_CSV.zip,SMALL LoBM,1926-07-31,2026-09-30,1203,True,Equity
 US_LargeValue,US Large Value,US,Large Value,6_Portfolios_2x3_CSV.zip,BIG HiBM,1926-07-31,2026-09-30,1203,True,Equity

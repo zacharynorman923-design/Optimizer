@@ -45,6 +45,7 @@ Each sleeve keeps its own start date: earlier months are blank, not truncated.
 | Sleeve | Construction | Morningstar category |
 |---|---|---|
 | US_LargeCap | Mkt-RF + RF (the full US market; there is no separate large-cap index) | Large Blend |
+| Research_IG | Research Income & Growth: US_LargeCap + 1% a year, added as 1%/12 each month (`RESEARCH_IG_PREMIUM`) | Large Blend |
 | US_SmallValue | 6_Portfolios_2x3, SMALL HiBM | Small Value |
 | US_SmallGrowth | 6_Portfolios_2x3, SMALL LoBM | Small Growth |
 | US_LargeValue | 6_Portfolios_2x3, BIG HiBM | Large Value |

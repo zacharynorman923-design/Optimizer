@@ -14,7 +14,7 @@ modules. Installable as a PWA, and it works offline once loaded.
 
 ## What it does
 
-- **Sleeves.** All 20 are on by default. Tick any subset and set a **minimum and maximum weight** for each.
+- **Sleeves.** All 21 are on by default. Tick any subset and set a **minimum and maximum weight** for each.
   The sleeve list is grouped by asset class.
 - **Asset-class limits.** A minimum and maximum for **Equity**, **Fixed income** (Treasuries and
   cash) and **Alts** (commodities, trend, equity long/short), as a percent of the whole portfolio,
