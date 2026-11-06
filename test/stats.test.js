@@ -65,3 +65,13 @@ test('correlation of a series with itself and its negative', () => {
   const C = S.correlation(a.map((x) => [x, -x, 2 * x]));
   near(C[0][1], -1); near(C[0][2], 1); near(C[1][1], 1);
 });
+
+test('worst 5 and 10 years are the worst 60/120-month runs, as a yearly rate', () => {
+  // 15 years: 1% a month, except a bad 24-month stretch at -2% a month
+  const r = Array(180).fill(0.01);
+  for (let k = 60; k < 84; k++) r[k] = -0.02;
+  const m = S.metrics(r, r.map(() => 0));
+  near(m.worst5y, (0.98 ** 24 * 1.01 ** 36) ** (1 / 5) - 1);
+  near(m.worst10y, (0.98 ** 24 * 1.01 ** 96) ** (1 / 10) - 1);
+  assert.ok(Number.isNaN(S.metrics(r.slice(0, 100), r.slice(0, 100)).worst10y)); // under 10 years: n/a
+});

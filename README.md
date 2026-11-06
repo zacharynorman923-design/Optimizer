@@ -14,7 +14,7 @@ modules. Installable as a PWA, and it works offline once loaded.
 
 ## What it does
 
-- **Sleeves.** All 20 are on by default. Tick any subset and set a **minimum and maximum weight** for each.
+- **Sleeves.** All 21 are on by default. Tick any subset and set a **minimum and maximum weight** for each.
   The sleeve list is grouped by asset class.
 - **Asset-class limits.** A minimum and maximum for **Equity**, **Fixed income** (Treasuries and
   cash) and **Alts** (commodities, trend, equity long/short), as a percent of the whole portfolio,
@@ -57,7 +57,8 @@ modules. Installable as a PWA, and it works offline once loaded.
 - **Efficient frontier.** The frontier with the selected, max-Sharpe and min-volatility portfolios,
   the benchmark and each sleeve plotted. Tap the frontier to choose that risk level.
 - **Backtest.**
-  - **Metrics:** CAGR, volatility, Sharpe, max drawdown, worst 12 months, best and worst year,
+  - **Metrics:** CAGR, volatility, Sharpe, max drawdown, worst 12 months, worst 5 and 10 years
+    (the worst run of 60 / 120 straight months, as a yearly rate), best and worst year,
     and the number of years ahead of the benchmark.
   - **Charts:** growth of $10,000 (log scale) and drawdowns.
   - **Rebalancing:** annual, quarterly, monthly or never.

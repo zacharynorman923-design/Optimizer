@@ -68,6 +68,9 @@ TSMOM_URL = ("https://www.aqr.com/-/media/AQR/Documents/Insights/Data-Sets/"
 #                + HGER's average monthly premium over that index while both existed
 #   Trend:       AQMIX (AQR Managed Futures Strategy Fund I) after AQR's TSMOM factor + RF - fee
 #   Equity_LS:   QLEIX (AQR Long-Short Equity Fund I) after 50% HML + 50% Mom + RF
+# Research Income & Growth = US market + this much a year (added as 1/12 each month).
+RESEARCH_IG_PREMIUM = 0.01
+
 # Fee-equivalent haircut on the paper TSMOM factor: 2% a year, taken as 2%/12 every month.
 # Not applied to AQMIX months, which are already net of the fund's own fees.
 TREND_FACTOR_FEE = 0.02
@@ -94,6 +97,8 @@ MISSING = (-99.99, -999.0)
 # (id, display name, region, Morningstar category, source file, source column)
 SLEEVES = [
     ("US_LargeCap", "US Large Cap (total market)", "US", "Large Blend", "ff3", "Mkt-RF + RF"),
+    ("Research_IG", "Research Income & Growth", "US", "Large Blend", "ff3",
+     "US market (Mkt-RF + RF) + 1% a year, added as 1%/12 each month"),
     ("US_SmallValue", "US Small Value", "US", "Small Value", "us_me_bm", "SMALL HiBM"),
     ("US_SmallGrowth", "US Small Growth", "US", "Small Growth", "us_me_bm", "SMALL LoBM"),
     ("US_LargeValue", "US Large Value", "US", "Large Value", "us_me_bm", "BIG HiBM"),
@@ -417,6 +422,8 @@ def build_sleeves(csvs: dict[str, Path]) -> tuple[pd.DataFrame, dict]:
 
     s = {
         "US_LargeCap": market,
+        # Research Income & Growth: the US market plus 1% a year, spread evenly as 1%/12 a month
+        "Research_IG": market + RESEARCH_IG_PREMIUM / 12,
         "US_SmallValue": us["vw_monthly"]["SMALL HiBM"],
         "US_SmallGrowth": us["vw_monthly"]["SMALL LoBM"],
         "US_LargeValue": us["vw_monthly"]["BIG HiBM"],
@@ -785,7 +792,17 @@ def perf(r: pd.Series, rf: pd.Series) -> dict:
         "Sharpe": ex.mean() * 12 / (ex_sd * np.sqrt(12)) if ex_sd > 1e-12 else np.nan,
         "Max Drawdown": dd.min(),
         "Worst 12M": ((1 + r).rolling(12).apply(np.prod, raw=True) - 1).min(),
+        # worst 5 / 10 years: worst run of 60 / 120 consecutive months, as a yearly rate
+        "Worst 5Y (ann.)": worst_years(r, 5),
+        "Worst 10Y (ann.)": worst_years(r, 10),
     }
+
+
+def worst_years(r: pd.Series, years: int) -> float:
+    m = 12 * years
+    if len(r) < m:
+        return np.nan
+    return ((1 + r).rolling(m).apply(np.prod, raw=True).min()) ** (1 / years) - 1
 
 
 def window_stats(sleeves: pd.DataFrame, rf: pd.Series, start, end) -> pd.DataFrame:
@@ -1056,7 +1073,7 @@ def main() -> int:
         "Source: Kenneth R. French Data Library. Returns are decimals (0.01 = 1%), monthly, USD.",
         "Paper portfolios: no fees, trading costs or taxes. French rebuilds full history on every update.",
         "Sharpe = annualized mean excess return over RF / annualized std of excess return.",
-        "Max drawdown on month-end wealth; Worst 12M = worst rolling 12-month compounded return.",
+        "Max drawdown on month-end wealth; Worst 12M = worst rolling 12-month compounded return; Worst 5Y / 10Y = worst rolling 60 / 120-month return, as a yearly rate.",
         "A window's stats are blank (see note) if the sleeve does not cover the whole window.",
         f"Correlation window: {corr.index.name} (all sleeves present).",
         f"DevExUS_Market/EM_Market: six portfolios weighted by avg firm size x number of firms, "
@@ -1064,7 +1081,7 @@ def main() -> int:
         "Calendar_Year compounds monthly returns; only complete years are shown.",
     ]}, index=pd.RangeIndex(1, 9, name="#"))
 
-    stat_cols = {"CAGR", "Volatility", "Max Drawdown", "Worst 12M"}
+    stat_cols = {"CAGR", "Volatility", "Max Drawdown", "Worst 12M", "Worst 5Y (ann.)", "Worst 10Y (ann.)"}
     sheets = {"Notes": notes, "Data_Cut": cuts.set_index("file")}
     for label, start, end in WINDOWS:
         sheets[f"Stats_{label.replace('-', '_')}"] = window_stats(sleeves, rf, start, end)

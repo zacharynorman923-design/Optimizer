@@ -68,7 +68,7 @@ export function column(bundle, id, dates) {
 
 /* Short labels for charts and narrow screens. */
 export const SHORT = {
-  US_LargeCap: 'US Market', US_SmallValue: 'US SV', US_SmallGrowth: 'US SG',
+  US_LargeCap: 'US Market', Research_IG: 'Research I&G', US_SmallValue: 'US SV', US_SmallGrowth: 'US SG',
   US_LargeValue: 'US LV', US_LargeGrowth: 'US LG', US_SmallRobust: 'US S Robust',
   US_SmallWeak: 'US S Weak', DevExUS_SmallValue: 'Dev SV', DevExUS_LargeValue: 'Dev LV',
   DevExUS_Market: 'Dev Mkt', EM_SmallValue: 'EM SV', EM_LargeValue: 'EM LV',
