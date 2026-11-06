@@ -48,6 +48,9 @@ export function worstRolling(returns, n = 12) {
   return worst;
 }
 
+/* A compounded multi-year return as a yearly rate (NaN stays NaN). */
+export const annualize = (total, years) => (Number.isFinite(total) ? (1 + total) ** (1 / years) - 1 : NaN);
+
 /* Compounded return of each complete calendar year, plus a trailing partial
    year flagged `partial` (year-to-date). A partial first year is dropped. */
 export function calendarYears(dates, returns) {
@@ -81,6 +84,9 @@ export function metrics(returns, rf) {
     sharpe: exSd > 1e-12 ? (mean(excess) * 12) / (exSd * Math.sqrt(12)) : NaN,
     maxDD: Math.min(...drawdowns(path)),
     worst12: worstRolling(returns, 12),
+    // worst 5 and 10 years: worst run of 60 / 120 consecutive months, as a yearly rate
+    worst5y: annualize(worstRolling(returns, 60), 5),
+    worst10y: annualize(worstRolling(returns, 120), 10),
     growth: path[n],
   };
 }

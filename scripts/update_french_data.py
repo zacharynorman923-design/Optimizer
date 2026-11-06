@@ -785,7 +785,17 @@ def perf(r: pd.Series, rf: pd.Series) -> dict:
         "Sharpe": ex.mean() * 12 / (ex_sd * np.sqrt(12)) if ex_sd > 1e-12 else np.nan,
         "Max Drawdown": dd.min(),
         "Worst 12M": ((1 + r).rolling(12).apply(np.prod, raw=True) - 1).min(),
+        # worst 5 / 10 years: worst run of 60 / 120 consecutive months, as a yearly rate
+        "Worst 5Y (ann.)": worst_years(r, 5),
+        "Worst 10Y (ann.)": worst_years(r, 10),
     }
+
+
+def worst_years(r: pd.Series, years: int) -> float:
+    m = 12 * years
+    if len(r) < m:
+        return np.nan
+    return ((1 + r).rolling(m).apply(np.prod, raw=True).min()) ** (1 / years) - 1
 
 
 def window_stats(sleeves: pd.DataFrame, rf: pd.Series, start, end) -> pd.DataFrame:
@@ -1056,7 +1066,7 @@ def main() -> int:
         "Source: Kenneth R. French Data Library. Returns are decimals (0.01 = 1%), monthly, USD.",
         "Paper portfolios: no fees, trading costs or taxes. French rebuilds full history on every update.",
         "Sharpe = annualized mean excess return over RF / annualized std of excess return.",
-        "Max drawdown on month-end wealth; Worst 12M = worst rolling 12-month compounded return.",
+        "Max drawdown on month-end wealth; Worst 12M = worst rolling 12-month compounded return; Worst 5Y / 10Y = worst rolling 60 / 120-month return, as a yearly rate.",
         "A window's stats are blank (see note) if the sleeve does not cover the whole window.",
         f"Correlation window: {corr.index.name} (all sleeves present).",
         f"DevExUS_Market/EM_Market: six portfolios weighted by avg firm size x number of firms, "
@@ -1064,7 +1074,7 @@ def main() -> int:
         "Calendar_Year compounds monthly returns; only complete years are shown.",
     ]}, index=pd.RangeIndex(1, 9, name="#"))
 
-    stat_cols = {"CAGR", "Volatility", "Max Drawdown", "Worst 12M"}
+    stat_cols = {"CAGR", "Volatility", "Max Drawdown", "Worst 12M", "Worst 5Y (ann.)", "Worst 10Y (ann.)"}
     sheets = {"Notes": notes, "Data_Cut": cuts.set_index("file")}
     for label, start, end in WINDOWS:
         sheets[f"Stats_{label.replace('-', '_')}"] = window_stats(sleeves, rf, start, end)

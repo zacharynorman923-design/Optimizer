@@ -18,7 +18,7 @@ const ym = (iso) => iso.slice(0, 7);
 const KEY = 'optimizer-state-v1', THEME_KEY = 'optimizer-theme';
 // Shown in the data line so it's easy to tell which version a phone is running.
 // Keep in step with VERSION in sw.js.
-const APP_VERSION = 'v19';
+const APP_VERSION = 'v20';
 const US_1926 = ['US_LargeCap', 'US_SmallValue', 'US_SmallGrowth', 'US_LargeValue', 'US_LargeGrowth', 'Cash'];
 const CLASSES = ['Equity', 'Fixed income', 'Alts'];
 const OBJECTIVES = {
@@ -478,6 +478,8 @@ function renderBacktest(s, portR, benchR, pm, bm, years) {
     + row('Sharpe', pm.sharpe.toFixed(2), Number.isFinite(bm.sharpe) ? bm.sharpe.toFixed(2) : '—')
     + row('Max drawdown', pct(pm.maxDD), pct(bm.maxDD))
     + row('Worst 12 months', pct(pm.worst12), pct(bm.worst12))
+    + row('Worst 5 years (a year)', pct(pm.worst5y), pct(bm.worst5y))
+    + row('Worst 10 years (a year)', pct(pm.worst10y), pct(bm.worst10y))
     + (full.length ? row('Best year', pct(best('port')), pct(best('bench'))) + row('Worst year', pct(worst('port')), pct(worst('bench'))) : '')
     + (full.length ? row('Years ahead of benchmark', `${beat} of ${full.length}`, '') : '')
     + row('$10,000 became', C.money(10000 * pm.growth), C.money(10000 * bm.growth))
@@ -504,10 +506,10 @@ function renderBenchmarks(s, portR, pm) {
     rows.push({ id, name: benchName(id), m: ok ? S.metrics(r, s.rf) : null, r: ok ? r : null, from: cov[id].start });
   }
   const f2 = (v) => (Number.isFinite(v) ? v.toFixed(2) : '—');
-  $('btable').innerHTML = `<table><thead><tr><th></th><th>CAGR</th><th>Vol</th><th>Sharpe</th><th>Max DD</th><th>Worst 12M</th></tr></thead><tbody>`
+  $('btable').innerHTML = `<table><thead><tr><th></th><th>CAGR</th><th>Vol</th><th>Sharpe</th><th>Max DD</th><th>Worst 12M</th><th>Worst 5Y</th><th>Worst 10Y</th></tr></thead><tbody>`
     + rows.map((x) => `<tr class="${x.id === 'port' ? 'port' : ''}${x.id === state.benchmark ? ' sel' : ''}"><td title="${esc(x.name)}">${esc(x.id === 'port' ? 'Yours' : SHORT[x.id])}</td>`
-      + (x.m ? `<td>${pct(x.m.cagr)}</td><td>${pct(x.m.vol)}</td><td>${f2(x.m.sharpe)}</td><td>${pct(x.m.maxDD)}</td><td>${pct(x.m.worst12)}</td>`
-        : `<td colspan="5" class="muted">starts ${ym(x.from)}, after this window begins</td>`) + '</tr>').join('')
+      + (x.m ? `<td>${pct(x.m.cagr)}</td><td>${pct(x.m.vol)}</td><td>${f2(x.m.sharpe)}</td><td>${pct(x.m.maxDD)}</td><td>${pct(x.m.worst12)}</td><td>${pct(x.m.worst5y)}</td><td>${pct(x.m.worst10y)}</td>`
+        : `<td colspan="7" class="muted">starts ${ym(x.from)}, after this window begins</td>`) + '</tr>').join('')
     + '</tbody></table>';
 
   const cols = rows.filter((x) => x.id === 'port' || x.r);
