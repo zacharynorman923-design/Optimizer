@@ -143,6 +143,10 @@ a{color:var(--accent)}
 .c-mklabel{fill:var(--muted);font-family:'JetBrains Mono',monospace;font-size:10.5px;pointer-events:none}
 .btable{overflow-x:auto}
 .btable table{min-width:560px}
+.bltable td,.bltable th{padding:6px 4px}
+.bltable td{font-size:12px}
+#blBox{margin-bottom:16px}
+.bltable td:first-child{white-space:nowrap}
 .btable tr.port td{font-weight:700;color:var(--ink)}
 .btable tr.sel td:first-child::after{content:' ◆';color:var(--ink-soft);font-size:10px}
 .bar-up{fill:var(--up)} .bar-down{fill:var(--down)}

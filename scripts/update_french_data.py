@@ -728,7 +728,8 @@ def build_benchmarks(sleeves: pd.DataFrame, region_caps: dict) -> tuple[pd.DataF
     out, meta = {}, []
     for bid, name, w in BLENDS:
         out[bid] = (w * stocks + (1 - w) * bonds) if 0 < w < 1 else (stocks if w == 1 else bonds)
-        meta.append({"id": bid, "name": name,
+        weights = {k: round(v, 4) for k, v in (("US_LargeCap", w), ("UST_5Y", 1 - w)) if v > 0}
+        meta.append({"id": bid, "name": name, "weights": weights,
                      "composition": f"{w:.0%} US market + {1 - w:.0%} UST_5Y, rebalanced monthly" if 0 < w < 1
                      else ("US_LargeCap (French US market)" if w == 1 else "UST_5Y")})
     # all-world equity: US / developed ex-US / EM weighted by each region's total market value
@@ -736,7 +737,9 @@ def build_benchmarks(sleeves: pd.DataFrame, region_caps: dict) -> tuple[pd.DataF
     rets = sleeves[list(caps.columns)]
     w = caps.reindex(rets.index).where(rets.notna())
     out["BM_World"] = (rets * w).sum(axis=1, min_count=len(caps.columns)) / w.sum(axis=1, min_count=len(caps.columns))
+    latest = caps.div(caps.sum(axis=1), axis=0).dropna().iloc[-1]  # regions' latest market-value shares
     meta.append({"id": "BM_World", "name": "All-world equity (cap-weighted)",
+                 "weights": {k: round(float(v), 4) for k, v in latest.items()},
                  "composition": "US market + DevExUS_Market + EM_Market, weighted by each region's total market value"})
     bm = pd.DataFrame(out)
     bm.index.name = "date"
