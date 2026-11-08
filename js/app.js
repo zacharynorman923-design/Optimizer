@@ -18,11 +18,11 @@ const ym = (iso) => iso.slice(0, 7);
 const KEY = 'optimizer-state-v1', THEME_KEY = 'optimizer-theme';
 // Shown in the data line so it's easy to tell which version a phone is running.
 // Keep in step with VERSION in sw.js.
-const APP_VERSION = 'v21';
+const APP_VERSION = 'v22';
 const US_1926 = ['US_LargeCap', 'US_SmallValue', 'US_SmallGrowth', 'US_LargeValue', 'US_LargeGrowth', 'Cash'];
 const CLASSES = ['Equity', 'Fixed income', 'Alts'];
 const OBJECTIVES = {
-  maxSharpe: 'Max Sharpe', minVar: 'Min volatility', targetVol: 'Max return at a volatility', maxAlpha: 'Max alpha at a beta',
+  maxSharpe: 'Max Sharpe', minVar: 'Min volatility', targetVol: 'Max return at a volatility', maxAlpha: 'Max alpha at a beta', blackLitterman: 'Black-Litterman',
   targetRet: 'Min volatility for a return', equal: 'Equal weight', custom: 'My own weights',
 };
 
@@ -33,7 +33,7 @@ let sharpeLim = { maxVol: null, minRet: null };
 const isOn = (id) => (id in state.include ? state.include[id] : defaultOn[id] !== false);
 let state = {
   include: {}, lo: {}, hi: {}, custom: {}, classLo: {}, classHi: {}, limitOf: {}, objective: 'maxSharpe', target: null,
-  sharpeMaxVol: null, sharpeMinRet: null, alphaMinBeta: null, alphaMaxBeta: 1,
+  sharpeMaxVol: null, sharpeMinRet: null, alphaMinBeta: null, alphaMaxBeta: 1, blConfidence: null, blDelta: null,
   start: 'earliest', end: 'latest', rebalance: 'annual', benchmark: 'US_LargeCap',
 };
 
@@ -151,7 +151,7 @@ for (const [el, key] of [['objective', 'objective'], ['rebalance', 'rebalance'],
     update();
   });
 }
-for (const [el, key] of [['sharpeMaxVol', 'sharpeMaxVol'], ['sharpeMinRet', 'sharpeMinRet'], ['alphaMinBeta', 'alphaMinBeta'], ['alphaMaxBeta', 'alphaMaxBeta']]) {
+for (const [el, key] of [['sharpeMaxVol', 'sharpeMaxVol'], ['sharpeMinRet', 'sharpeMinRet'], ['alphaMinBeta', 'alphaMinBeta'], ['alphaMaxBeta', 'alphaMaxBeta'], ['blConfidence', 'blConfidence'], ['blDelta', 'blDelta']]) {
   $(el).addEventListener('input', (e) => {
     const v = parseFloat(e.target.value);
     state[key] = Number.isFinite(v) ? v : null;
@@ -198,11 +198,13 @@ function syncControls(win) {
   $('benchSel').value = state.benchmark;
   const tgt = state.objective === 'targetVol' || state.objective === 'targetRet';
   // Max Sharpe swaps the target box for its optional volatility cap and return floor
-  const ms = state.objective === 'maxSharpe', ma = state.objective === 'maxAlpha';
-  $('targetFld').classList.toggle('hidden', ms || ma);
+  const ms = state.objective === 'maxSharpe', ma = state.objective === 'maxAlpha', bl = state.objective === 'blackLitterman';
+  $('targetFld').classList.toggle('hidden', ms || ma || bl);
+  document.querySelectorAll('.bl-opt').forEach((el) => el.classList.toggle('hidden', !bl));
+  $('blBox').classList.toggle('hidden', !bl);
   document.querySelectorAll('.sharpe-lim').forEach((el) => el.classList.toggle('hidden', !ms));
   document.querySelectorAll('.alpha-lim').forEach((el) => el.classList.toggle('hidden', !ma));
-  for (const k of ['sharpeMaxVol', 'sharpeMinRet', 'alphaMinBeta', 'alphaMaxBeta']) {
+  for (const k of ['sharpeMaxVol', 'sharpeMinRet', 'alphaMinBeta', 'alphaMaxBeta', 'blConfidence', 'blDelta']) {
     if (document.activeElement !== $(k)) $(k).value = state[k] != null ? state[k] : '';
   }
   $('targetFld').classList.toggle('disabled', !tgt);
@@ -271,6 +273,29 @@ function run() {
 
   let chosen, msg = '';
   switch (state.objective) {
+    case 'blackLitterman': {
+      // reference portfolio = the benchmark's mix, over the ticked sleeves it uses
+      const bmMeta = bundle.benchmarks.list.find((x) => x.id === state.benchmark);
+      const refMix = bmMeta ? bmMeta.weights : { [state.benchmark]: 1 };
+      let wRef = inc.map((id) => refMix[id] || 0);
+      const covered = wRef.reduce((a, b) => a + b, 0);
+      const bl = SHORT[state.benchmark] || state.benchmark;
+      let refNote = covered > 0.999 ? `the ${bl} mix` : '';
+      if (covered <= 1e-9) { wRef = inc.map(() => 1 / inc.length); refNote = `equal weight (the ${bl} mix uses sleeves that aren't ticked)`; }
+      else if (covered < 0.999) { wRef = wRef.map((w) => w / covered); refNote = `the ${bl} mix, rescaled to the ticked sleeves it uses`; }
+      const conf = (state.blConfidence != null ? state.blConfidence : 50) / 100;
+      const delta = state.blDelta != null ? state.blDelta : 2.5;
+      const blr = O.blackLitterman({ cov: mo.cov, mu: mo.mu, rf: mo.rf, wRef, delta, confidence: conf });
+      const bctx = O.context(blr.posterior, mo.cov, mo.rf, lo, hi, groups, rel);
+      const bp = O.maxSharpe(bctx, O.frontier(bctx));
+      chosen = evalW(bp.w);
+      msg = `Black-Litterman: max Sharpe on returns blended ${Math.round(conf * 100)}% toward history from the equilibrium of ${refNote} (δ ${delta}). `
+        + `Expected return on the blended view: ${pct(O.portReturn(bp.w, blr.posterior))}; the figures above use history.`;
+      $('blTable').innerHTML = `<table><thead><tr><th>Sleeve</th><th title="Historical mean">Hist.</th><th title="Equilibrium (implied by the reference mix)">Equil.</th><th title="Black-Litterman blend">Blend</th><th>Weight</th></tr></thead><tbody>`
+        + inc.map((id, i) => `<tr><td>${esc(SHORT[id] || id)}</td><td>${pct(mo.mu[i])}</td><td>${pct(blr.prior[i])}</td><td>${pct(blr.posterior[i])}</td><td>${pct(bp.w[i])}</td></tr>`).join('')
+        + '</tbody></table>';
+      break;
+    }
     case 'maxAlpha': {
       const bl = SHORT[state.benchmark] || state.benchmark;
       const r = O.maxAlpha({ alpha: ab.alpha, beta: ab.beta, cov: mo.cov, lo, hi, groups, rel,

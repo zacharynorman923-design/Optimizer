@@ -270,3 +270,29 @@ test('unreachable beta ranges are explained', () => {
   const r2 = O.maxAlpha({ alpha: [0.01, 0.02], beta: [0.3, 0.8], cov: [[0.02, 0], [0, 0.03]], lo: [0, 0], hi: [1, 1], minBeta: 1 });
   assert.match(r2.infeasible, /highest beta available is 0.80/);
 });
+
+// ------------------------------------------------- Black-Litterman
+test('Black-Litterman: confidence 0 gives equilibrium, 1 gives history, and matches the textbook formula', () => {
+  const wRef = [0.5, 0.3, 0.2], delta = 2.5, tau = 0.05;
+  const pi = mv(cov, wRef).map((x) => delta * x + rf);
+  const zero = O.blackLitterman({ cov, mu, rf, wRef, confidence: 0 });
+  zero.posterior.forEach((x, i) => near(x, pi[i], 1e-12));
+  zero.prior.forEach((x, i) => near(x, pi[i], 1e-12));
+  O.blackLitterman({ cov, mu, rf, wRef, confidence: 1 }).posterior.forEach((x, i) => near(x, mu[i], 1e-12));
+  // textbook form: μ = [(τΣ)⁻¹ + Ω⁻¹]⁻¹[(τΣ)⁻¹π + Ω⁻¹q] (excess returns), here with c = 0.5
+  const c = 0.5, k = (1 - c) / c;
+  const tS = cov.map((r) => r.map((x) => tau * x));
+  const Oinv = [0, 1, 2].map((i) => 1 / (k * tau * cov[i][i]));
+  const tSinv = inv3(tS);
+  const Ainv = inv3(tSinv.map((r, i) => r.map((x, j) => x + (i === j ? Oinv[i] : 0))));
+  const pe = pi.map((x) => x - rf), qe = mu.map((x) => x - rf);
+  const rhs = mv(tSinv, pe).map((x, i) => x + Oinv[i] * qe[i]);
+  const expect = mv(Ainv, rhs).map((x) => x + rf);
+  O.blackLitterman({ cov, mu, rf, wRef, confidence: c }).posterior.forEach((x, i) => near(x, expect[i], 1e-10));
+});
+
+test('Black-Litterman works when two sleeves move in lockstep (singular covariance)', () => {
+  const c2 = [[0.04, 0.04, 0.01], [0.04, 0.04, 0.01], [0.01, 0.01, 0.02]]; // sleeve 1 = sleeve 0 + constant
+  const r = O.blackLitterman({ cov: c2, mu: [0.10, 0.11, 0.06], rf: 0.02, wRef: [0.6, 0, 0.4], confidence: 0.5 });
+  assert.ok(r.posterior.every(Number.isFinite));
+});

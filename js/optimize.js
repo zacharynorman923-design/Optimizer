@@ -500,3 +500,49 @@ export function maxAlpha({ alpha, beta, cov, lo, hi, groups = [], rel = [], minB
   if (!ok) return { infeasible: 'the solver could not find a portfolio meeting every limit (try a wider beta range)', range: [bLo, bHi] };
   return { w, alpha: dot(w, alpha), beta: b, range: [bLo, bHi] };
 }
+
+/* ---------------------------------------------------------------- Black-Litterman
+   Blends two sets of expected returns, then the app optimizes on the blend:
+   - equilibrium (prior) excess returns π = δ·Σ·w_ref, the returns that make the reference
+     portfolio w_ref optimal for risk aversion δ;
+   - views q: here each sleeve's own historical mean excess return (P = I).
+   Posterior μ = π + τΣ(τΣ + Ω)⁻¹(q − π), with Ω = ((1 − c)/c)·diag(τΣ) for confidence c in the
+   views (c → 0 gives π, c → 1 gives q). This form never inverts Σ itself, so it works when
+   sleeves move in lockstep (e.g. a sleeve that is another one plus a constant). Returns are
+   annual totals: rf is added back to π and μ. */
+export function blackLitterman({ cov, mu, rf, wRef, delta = 2.5, tau = 0.05, confidence = 0.5 }) {
+  const pi = matVec(cov, wRef).map((x) => delta * x);
+  const q = mu.map((m) => m - rf);
+  const c = Math.min(1, Math.max(0, confidence));
+  let post;
+  if (c <= 1e-9) post = pi.slice();
+  else if (c >= 1 - 1e-9) post = q.slice();
+  else {
+    const k = (1 - c) / c;
+    const A = cov.map((r, i) => r.map((x, j) => tau * x + (i === j ? k * tau * cov[i][i] : 0))); // τΣ + Ω
+    const x = solveLinearSystem(A, q.map((v, i) => v - pi[i]));
+    post = pi.map((p, i) => p + tau * dot(cov[i], x));
+  }
+  return { prior: pi.map((p) => p + rf), posterior: post.map((p) => p + rf) };
+}
+
+/* Solve A·x = b by Gaussian elimination with partial pivoting (A small and well conditioned). */
+function solveLinearSystem(A, b) {
+  const n = b.length, M = A.map((r, i) => [...r, b[i]]);
+  for (let col = 0; col < n; col++) {
+    let piv = col;
+    for (let r = col + 1; r < n; r++) if (Math.abs(M[r][col]) > Math.abs(M[piv][col])) piv = r;
+    [M[col], M[piv]] = [M[piv], M[col]];
+    for (let r = col + 1; r < n; r++) {
+      const f = M[r][col] / M[col][col];
+      for (let k = col; k <= n; k++) M[r][k] -= f * M[col][k];
+    }
+  }
+  const x = new Array(n).fill(0);
+  for (let r = n - 1; r >= 0; r--) {
+    let s = M[r][n];
+    for (let k = r + 1; k < n; k++) s -= M[r][k] * x[k];
+    x[r] = s / M[r][r];
+  }
+  return x;
+}

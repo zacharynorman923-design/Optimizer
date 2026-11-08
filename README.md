@@ -50,6 +50,20 @@ modules. Installable as a PWA, and it works offline once loaded.
     this is a linear program, solved with the ADMM solver plus beta as one more limit. It tends to
     concentrate in one or two sleeves, so use sleeve or class limits to diversify. Every objective
     also shows the portfolio's alpha and beta against the benchmark.
+  - *Black-Litterman*: max Sharpe on expected returns that blend two views.
+    - **Equilibrium:** the returns that make the chosen benchmark's mix optimal, π = δΣw. A blend
+      benchmark is its US market / 5-year Treasury mix; World uses the regions' latest market-value
+      shares; a sleeve benchmark is that sleeve. Untick the sleeves it uses and it falls back to
+      equal weight.
+    - **History:** each sleeve's historical mean.
+    - **Settings:** *Confidence in history* (default 50%) sets how far to move from equilibrium to
+      history; *Risk aversion δ* defaults to 2.5, and τ is 0.05.
+    - **Limits checks:** 0% returns the reference mix itself, and 100% is the same as plain Max
+      Sharpe.
+    - **Reading the table:** the posterior is μ = π + τΣ(τΣ + Ω)⁻¹(q − π), which never inverts Σ,
+      so sleeves that move in lockstep are fine. A table shows each sleeve's history, equilibrium
+      and blended return. Because a view on one sleeve also pulls the sleeves correlated with it, a
+      blended value can land outside the range of its own two inputs.
   - *Equal weight*
   - *My own weights*, where you type weights in the sleeve list
 
