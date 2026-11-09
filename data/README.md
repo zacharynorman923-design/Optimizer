@@ -26,7 +26,7 @@ All files come from the [Kenneth R. French Data Library](https://mba.tuck.dartmo
 | `F-F_Momentum_Factor_CSV.zip` (French) | Momentum factor (Mom) for the equity long/short sleeve |
 | AQR "Time Series Momentum: Factors, Monthly" ([page](https://www.aqr.com/Insights/Datasets/Time-Series-Momentum-Factors-Monthly)) | Trend-following sleeve |
 | AQMIX (AQR Managed Futures Strategy Fund, Class I), daily dividend-adjusted closes from Yahoo Finance | Trend from 2010-02 |
-| QLEIX (AQR Long-Short Equity Fund, Class I), daily dividend-adjusted closes from Yahoo Finance | Equity_LS from 2013-08 |
+| MBXIX (Catalyst/Millburn Hedge Strategy Fund, Class I), daily dividend-adjusted closes from Yahoo Finance | Equity_LS from 2016-01 |
 | Federal Reserve H.15, daily Treasury constant-maturity yields ([download page](https://www.federalreserve.gov/datadownload/Choose.aspx?rel=H15)) | Yields for the Treasury sleeves |
 | `6_Portfolios_2x3_CSV.zip` | US size × book-to-market portfolios |
 | `6_Portfolios_ME_OP_2x3_CSV.zip` | US size × operating-profitability portfolios |
@@ -59,7 +59,7 @@ Each sleeve keeps its own start date: earlier months are blank, not truncated.
 
 | Commodities | HGER from 2022-03; before that AQR equal-weight commodity futures + RF + HGER's premium | Commodities Broad Basket |
 | Trend | AQMIX from 2010-02; before that AQR time-series momentum factor + RF − 2%/yr fee | Systematic Trend |
-| Equity_LS | QLEIX from 2013-08; before that 50% HML + 50% Mom (French) + RF | Equity Market Neutral |
+| Equity_LS (shown as "Hedge strategy") | MBXIX from 2016-01; before that 50% HML + 50% Mom (French) + RF | Alternative (hedge strategy) |
 | UST_1Y / UST_5Y / UST_10Y | H.15 1-, 5- and 10-year constant-maturity yields, built into total returns (see below) | Short / Intermediate / Long Government |
 
 All six portfolio sleeves use French's **value-weighted** returns. Percentages are
@@ -100,7 +100,7 @@ fund side by side with the source of each month. The `Commodities_Splice`, `Tren
 |---|---|---|---|
 | Commodities | **HGER** (2022-03) | AQR equal-weight commodity futures + RF **+ HGER's premium** | corr 0.86, TE 6.2%/yr (39 months) |
 | Trend | **AQMIX** (2010-02) | AQR TSMOM factor + RF **− 2%/yr fee** | corr 0.76, TE 8.5%/yr (196 months) |
-| Equity_LS | **QLEIX** (2013-08) | 50% HML + 50% Mom (French) + RF | **corr 0.20**, TE 11.8%/yr (158 months) |
+| Equity_LS | **MBXIX** (2016-01) | 50% HML + 50% Mom (French) + RF | **corr 0.03**, TE 14.2%/yr (129 months) |
 
 - **Commodities proxy:** the equal-weight portfolio from Levine, Ooi, Richardson & Sasseville,
   "Commodities for the Long Run" (*Financial Analysts Journal*, 2018), in AQR's updated dataset.
@@ -117,12 +117,16 @@ fund side by side with the source of each month. The `Commodities_Splice`, `Tren
   AQR's century-long trend reconstruction isn't published as a download.
 - **Equity_LS proxy:** half value (HML), half momentum (Mom), rebalanced monthly, plus RF: a
   classic market-neutral pair from 1927.
-  - **QLEIX is a different strategy:** AQR's long/short equity fund uses many signals and keeps
-    some net market exposure (beta about 0.3 to US stocks; correlation +0.41). The proxy is
-    market-neutral (correlation −0.27).
-  - Over 2013-08 to 2026-09 QLEIX returned **12.9% a year** against the proxy's 2.9%, and their
-    monthly correlation was only 0.20. So the sleeve behaves quite differently before and after
-    August 2013. Read pre-2013 results for this sleeve as a different strategy.
+  - **MBXIX is a different strategy:** the Catalyst/Millburn Hedge Strategy Fund combines
+    systematic futures trading with an equity holding, so it carries real market exposure
+    (beta about 0.4 to US stocks; correlation +0.52). The proxy is market-neutral
+    (correlation −0.28).
+  - Over 2016-01 to 2026-09 MBXIX returned **9.8% a year** against the proxy's 3.0%, and their
+    monthly correlation was **0.03**: they are unrelated. So this sleeve is one thing before
+    2016 and another after. Read pre-2016 results as a different strategy, or start the window
+    in 2016 when this sleeve matters.
+  - The sleeve keeps its `Equity_LS` id so saved settings still work. The app shows it as
+    "Hedge strategy".
 - **Fees:** fund months are net of each fund's fees. Proxy months are paper returns before
   fees, trading and shorting costs, except Trend's 2% haircut. They tend to be optimistic, so
   consider capping these sleeves' weights.
@@ -158,7 +162,7 @@ fund side by side with the source of each month. The `Commodities_Splice`, `Tren
 | `sleeve_metadata.csv` | `sleeve, name, region, morningstar_category, source_file, source_column, start_date, end_date, months, default_on, asset_class` |
 | `optimizer_returns.json` | The three files above in one bundle for the React app (blank months are `null`) |
 | `commodities_splice.csv` | The commodity sleeve with AQR and HGER side by side and the source of each month |
-| `trend_splice.csv`, `equity_ls_splice.csv` | Trend (AQR factor / AQMIX) and Equity_LS (HML + Mom / QLEIX) side by side, with the source of each month |
+| `trend_splice.csv`, `equity_ls_splice.csv` | Trend (AQR factor / AQMIX) and Equity_LS (HML + Mom / MBXIX) side by side, with the source of each month |
 | `benchmarks_monthly.csv` | The seven benchmarks' monthly returns |
 | `stats.xlsx` | One sheet per item, listed below |
 | `dfat_extended.csv`, `dfat_regression.csv`, `dfat_synthetic_vs_actual.png` | Only when DFAT returns are provided |
@@ -173,7 +177,7 @@ fund side by side with the source of each month. The `Commodities_Splice`, `Tren
 - **Size_Lag_Check**: see the international market sleeves above.
 - **Commodities_Splice**: how closely HGER tracked AQR over the months both exist.
 - **Benchmarks_Full**, **Benchmarks_Calendar**, **Benchmark_Checks**: benchmark stats, calendar years, and the comparison with VBINX and VT.
-- **Trend_Splice**, **EquityLS_Splice**: how closely AQMIX and QLEIX tracked their proxies over the months both exist.
+- **Trend_Splice**, **EquityLS_Splice**: how closely AQMIX and MBXIX tracked their proxies over the months both exist.
 
 Sharpe = annualized mean monthly excess return over RF ÷ annualized standard deviation of
 excess returns (arithmetic, ×12 and ×√12).

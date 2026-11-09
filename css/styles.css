@@ -190,3 +190,9 @@ a{color:var(--accent)}
 @media (max-width:420px){
   .grid2{grid-template-columns:1fr}
 }
+
+/* ----------------------------- walk-forward ----------------------------- */
+.wf-controls{display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap}
+.wf-controls .fld{flex:1;min-width:150px}
+.wf-controls .ghost-btn{padding:11px 16px;font-size:13.5px}
+.wf-controls .ghost-btn:disabled{opacity:.5;cursor:default}

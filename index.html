@@ -41,6 +41,7 @@
         <button class="chip" data-preset="us">US to 1926</button>
         <button class="chip" data-preset="none">None</button>
         <button class="chip reset" id="resetBtn" title="Set every sleeve back to 0–100% of the portfolio, class limits to 0–100%, and clear your own weights">↺ Reset limits</button>
+        <button class="chip reset hidden" id="undoBtn" title="Put the limits back as they were before the reset">↶ Undo reset</button>
       </div>
     </div>
     <p class="note">Tick the sleeves to include and set a minimum and maximum weight for each (in %).
@@ -146,6 +147,26 @@
       <div class="chart" id="growthChart"></div>
       <h3 class="chart-title">Drawdowns</h3>
       <div class="chart" id="ddChart"></div>
+    </section>
+
+    <section class="panel" aria-labelledby="wfH">
+      <div class="panel-head"><h2 id="wfH">Walk-forward test</h2><span class="tag">out of sample</span></div>
+      <p class="note">The backtest above picks weights with hindsight. This test doesn't: every December it re-runs your
+        objective using only the data up to that point, holds those weights for the next year, and repeats.
+        It shows what the <i>rule</i> would have earned in real time.</p>
+      <div class="wf-controls">
+        <label class="fld"><span>First training period</span>
+          <select id="wfTrain"><option value="5">5 years</option><option value="10" selected>10 years</option><option value="15">15 years</option><option value="20">20 years</option></select>
+        </label>
+        <button class="ghost-btn" id="wfBtn">Run walk-forward test</button>
+      </div>
+      <p class="history" id="wfNote"></p>
+      <div id="wfOut" class="hidden">
+        <div class="mtable btable" id="wfTable"></div>
+        <h3 class="chart-title">Growth of $10,000 over the tested years <span class="muted">(log scale)</span></h3>
+        <div class="legend inline" id="wfLegend"></div>
+        <div class="chart" id="wfChart"></div>
+      </div>
     </section>
 
     <section class="panel" aria-labelledby="cyH">

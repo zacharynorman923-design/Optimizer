@@ -8,6 +8,7 @@ import { loadBundle, coverage, commonWindow, slice, column, SHORT } from './data
 const BENCH_IDS = ['BM_FI100', 'BM_20_80', 'BM_40_60', 'BM_60_40', 'BM_80_20', 'BM_EQ100', 'BM_World'];
 import * as S from './stats.js';
 import * as O from './optimize.js';
+import { solveObjective, walkForward, turnover } from './objectives.js';
 import * as C from './charts.js';
 
 const $ = (id) => document.getElementById(id);
@@ -16,9 +17,9 @@ const pct = C.pct;
 const ym = (iso) => iso.slice(0, 7);
 
 const KEY = 'optimizer-state-v1', THEME_KEY = 'optimizer-theme';
-// Shown in the data line so it's easy to tell which version a phone is running.
-// Keep in step with VERSION in sw.js.
-const APP_VERSION = 'v22';
+// The app's one version number, shown in the data line so it's easy to tell which version a
+// phone is running. (sw.js no longer carries a version of its own.)
+const APP_VERSION = 'v23';
 const US_1926 = ['US_LargeCap', 'US_SmallValue', 'US_SmallGrowth', 'US_LargeValue', 'US_LargeGrowth', 'Cash'];
 const CLASSES = ['Equity', 'Fixed income', 'Alts'];
 const OBJECTIVES = {
@@ -127,11 +128,23 @@ $('sleeves').addEventListener('input', (e) => {
 
 // Back to defaults: sleeves 0–100% of the portfolio, classes 0–100%, no custom weights.
 // Which sleeves are ticked, the objective and the window stay as they are.
-$('resetBtn').onclick = () => {
-  Object.assign(state, { lo: {}, hi: {}, limitOf: {}, custom: {}, classLo: {}, classHi: {}, sharpeMaxVol: null, sharpeMinRet: null });
+const LIMIT_KEYS = ['lo', 'hi', 'limitOf', 'custom', 'classLo', 'classHi', 'sharpeMaxVol', 'sharpeMinRet'];
+let undoLimits = null; // the limits as they were before the last reset
+function applyLimits(v) {
+  Object.assign(state, v);
   renderSleeves();
   renderClasses();
   update();
+}
+$('resetBtn').onclick = () => {
+  undoLimits = JSON.parse(JSON.stringify(Object.fromEntries(LIMIT_KEYS.map((k) => [k, state[k]]))));
+  applyLimits({ lo: {}, hi: {}, limitOf: {}, custom: {}, classLo: {}, classHi: {}, sharpeMaxVol: null, sharpeMinRet: null });
+  $('undoBtn').classList.remove('hidden');
+};
+$('undoBtn').onclick = () => {
+  if (undoLimits) applyLimits(undoLimits);
+  undoLimits = null;
+  $('undoBtn').classList.add('hidden');
 };
 
 document.querySelectorAll('[data-preset]').forEach((b) => {
@@ -257,113 +270,46 @@ function run() {
     status(`These limits can't all be met: ${bad}.`, 'err'); $('results').classList.add('hidden'); return;
   }
 
-  const mo = O.moments(s.matrix, s.rf);
-  const ctx = O.context(mo.mu, mo.cov, mo.rf, bad ? inc.map(() => 0) : lo, bad ? inc.map(() => 1) : hi, bad ? [] : groups, bad ? [] : rel);
-  const front = O.frontier(ctx);
-  const sharpeP = O.maxSharpe(ctx, front);
-  const minP = front[0];
-  const evalW = (w) => {
-    const ret = O.portReturn(w, mo.mu), vol = O.portVol(w, mo.cov);
-    return { w, ret, vol, sharpe: (ret - mo.rf) / vol };
-  };
-
-  // alpha and beta of every sleeve against the chosen benchmark, over the same months
+  // solve the chosen objective (js/objectives.js); the same call drives the walk-forward test
   const benchR = column(bundle, state.benchmark, s.dates);
-  const ab = O.alphaBeta(s.matrix, benchR, s.rf);
+  const bl = SHORT[state.benchmark] || state.benchmark;
+  const bmMeta = bundle.benchmarks.list.find((x) => x.id === state.benchmark);
+  const refMix = bmMeta ? bmMeta.weights : { [state.benchmark]: 1 };
+  const problem = {
+    objective: state.objective,
+    opts: { target: state.target, sharpeMaxVol: state.sharpeMaxVol, sharpeMinRet: state.sharpeMinRet,
+      alphaMinBeta: state.alphaMinBeta, alphaMaxBeta: state.alphaMaxBeta, blConfidence: state.blConfidence,
+      blDelta: state.blDelta, custom: inc.map((id) => bound(state.custom, id, 0)) },
+    matrix: s.matrix, rf: s.rf, benchR, lo, hi, groups, rel, limitsOk: !bad,
+    refMix: inc.map((id) => refMix[id] || 0), benchLabel: bl,
+  };
+  const res = solveObjective(problem);
+  const { mo, ctx, ab, chosen } = res;
+  const front = res.front(), sharpeP = res.sharpeP(), minP = front[0];
+  const msg = res.msg;
+  sharpeLim = res.limits;
 
-  let chosen, msg = '';
-  switch (state.objective) {
-    case 'blackLitterman': {
-      // reference portfolio = the benchmark's mix, over the ticked sleeves it uses
-      const bmMeta = bundle.benchmarks.list.find((x) => x.id === state.benchmark);
-      const refMix = bmMeta ? bmMeta.weights : { [state.benchmark]: 1 };
-      let wRef = inc.map((id) => refMix[id] || 0);
-      const covered = wRef.reduce((a, b) => a + b, 0);
-      const bl = SHORT[state.benchmark] || state.benchmark;
-      let refNote = covered > 0.999 ? `the ${bl} mix` : '';
-      if (covered <= 1e-9) { wRef = inc.map(() => 1 / inc.length); refNote = `equal weight (the ${bl} mix uses sleeves that aren't ticked)`; }
-      else if (covered < 0.999) { wRef = wRef.map((w) => w / covered); refNote = `the ${bl} mix, rescaled to the ticked sleeves it uses`; }
-      const conf = (state.blConfidence != null ? state.blConfidence : 50) / 100;
-      const delta = state.blDelta != null ? state.blDelta : 2.5;
-      const blr = O.blackLitterman({ cov: mo.cov, mu: mo.mu, rf: mo.rf, wRef, delta, confidence: conf });
-      const bctx = O.context(blr.posterior, mo.cov, mo.rf, lo, hi, groups, rel);
-      const bp = O.maxSharpe(bctx, O.frontier(bctx));
-      chosen = evalW(bp.w);
-      msg = `Black-Litterman: max Sharpe on returns blended ${Math.round(conf * 100)}% toward history from the equilibrium of ${refNote} (δ ${delta}). `
-        + `Expected return on the blended view: ${pct(O.portReturn(bp.w, blr.posterior))}; the figures above use history.`;
-      $('blTable').innerHTML = `<table><thead><tr><th>Sleeve</th><th title="Historical mean">Hist.</th><th title="Equilibrium (implied by the reference mix)">Equil.</th><th title="Black-Litterman blend">Blend</th><th>Weight</th></tr></thead><tbody>`
-        + inc.map((id, i) => `<tr><td>${esc(SHORT[id] || id)}</td><td>${pct(mo.mu[i])}</td><td>${pct(blr.prior[i])}</td><td>${pct(blr.posterior[i])}</td><td>${pct(bp.w[i])}</td></tr>`).join('')
-        + '</tbody></table>';
-      break;
-    }
-    case 'maxAlpha': {
-      const bl = SHORT[state.benchmark] || state.benchmark;
-      const r = O.maxAlpha({ alpha: ab.alpha, beta: ab.beta, cov: mo.cov, lo, hi, groups, rel,
-        minBeta: state.alphaMinBeta, maxBeta: state.alphaMaxBeta });
-      if (r.infeasible) {
-        msg = `No portfolio within these limits has that beta to ${bl}: ${r.infeasible} (available: ${r.range[0].toFixed(2)} to ${r.range[1].toFixed(2)}). Showing max Sharpe instead.`;
-        chosen = sharpeP;
-      } else {
-        chosen = evalW(r.w);
-        const top2 = r.w.slice().sort((a, b) => b - a).slice(0, 2).reduce((a, b) => a + b, 0);
-        if (state.alphaMinBeta == null && state.alphaMaxBeta == null) msg = 'With no beta limit, max alpha just piles into the highest-alpha sleeves. Set a beta range to make it meaningful.';
-        else if (top2 > 0.95) msg = `Alpha and beta both scale linearly with the weights, so the best answer sits in one or two sleeves (here ${pct(top2, 0)}). Add sleeve or asset-class limits to spread it out.`;
-      }
-      break;
-    }
-    case 'minVar': chosen = minP; break;
-    case 'targetVol':
-    case 'targetRet': {
-      const metric = state.objective === 'targetVol' ? 'vol' : 'ret';
-      // a blank box follows the benchmark: its volatility, or its CAGR (as in the Benchmarks table)
-      const bp = point(state.benchmark, s.dates);
-      const bl = SHORT[state.benchmark] || state.benchmark;
-      const auto = bp ? (metric === 'vol' ? bp.vol : S.metrics(benchR, s.rf).cagr) : sharpeP[metric];
-      $('target').placeholder = bp ? `${bl}${metric === 'vol' ? '' : ' CAGR'}: ${(auto * 100).toFixed(1)}` : '';
-      const target = state.target != null ? state.target / 100 : auto;
-      sharpeLim = metric === 'vol' ? { maxVol: target, minRet: null } : { maxVol: null, minRet: target };
-      chosen = O.frontierTarget(ctx, front, metric, target);
-      const what = metric === 'vol' ? 'volatility' : 'return';
-      if (chosen.clamped === 'low') msg = `No portfolio within these limits has ${what} as low as ${pct(target)}. Showing the lowest available: ${pct(chosen[metric])}.`;
-      if (chosen.clamped === 'high') msg = `No portfolio within these limits reaches ${pct(target)} ${what}. Showing the highest available: ${pct(chosen[metric])}.`;
-      break;
-    }
-    case 'equal': chosen = evalW(O.projectAll(inc.map(() => 1 / inc.length), lo, hi, groups, O.relativeHalfspaces(rel, inc.length))); break;
-    case 'custom': {
-      const raw = inc.map((id) => bound(state.custom, id, 0));
-      const tot = raw.reduce((a, b) => a + b, 0);
-      if (!tot) { status('Enter your own weights in the sleeve list (the right-hand column).', 'warn'); }
-      const w = tot ? raw.map((x) => x / tot) : inc.map(() => 1 / inc.length);
-      chosen = evalW(w);
-      if (tot && Math.abs(tot - 100) > 0.05) msg = `Your weights add up to ${tot.toFixed(1)}%, so they've been scaled to 100%.`;
-      if (!tot) msg = 'No weights entered yet, so this shows equal weight. Type weights in the right-hand column of the sleeve list.';
-      const out = groups.filter((g) => { const t = g.members.reduce((a, i) => a + w[i], 0); return t < g.lo - 1e-6 || t > g.hi + 1e-6; });
-      if (tot && out.length) msg += `${msg ? ' ' : ''}Your weights are outside the ${out.map((g) => g.name).join(' and ')} limit${out.length > 1 ? 's' : ''} (limits don't apply to your own weights).`;
-      break;
-    }
-    default: {
-      // blank boxes follow the benchmark: its volatility as the cap, its CAGR + 1% as the floor
-      // (CAGR, as shown in the Benchmarks table, rather than its average yearly return)
-      const bp = point(state.benchmark, s.dates);
-      const auto = bp ? { maxVol: bp.vol, minRet: S.metrics(benchR, s.rf).cagr + 0.01 } : { maxVol: null, minRet: null };
-      const bl = SHORT[state.benchmark] || state.benchmark;
-      $('sharpeMaxVol').placeholder = bp ? `${bl}: ${(auto.maxVol * 100).toFixed(1)}` : 'no cap';
-      $('sharpeMinRet').placeholder = bp ? `${bl} CAGR + 1: ${(auto.minRet * 100).toFixed(1)}` : 'no floor';
-      const lim = { maxVol: state.sharpeMaxVol != null ? state.sharpeMaxVol / 100 : auto.maxVol,
-        minRet: state.sharpeMinRet != null ? state.sharpeMinRet / 100 : auto.minRet };
-      sharpeLim = lim;
-      chosen = O.maxSharpeWithin(ctx, front, lim);
-      const free = `Unconstrained max Sharpe: ${pct(sharpeP.ret)} return, ${pct(sharpeP.vol)} volatility, Sharpe ${sharpeP.sharpe.toFixed(2)}.`;
-      if (chosen.infeasible) msg = `No portfolio meets ${lim.maxVol != null && lim.minRet != null ? 'both limits' : 'that limit'}: ${chosen.infeasible}. Showing the closest one.`;
-      else if (chosen.binding === 'maxVol') msg = `Volatility capped at ${pct(lim.maxVol)}, so this is the best Sharpe at or under the cap. ${free}`;
-      else if (chosen.binding === 'minRet') msg = `Return floor of ${pct(lim.minRet)}, so this is the best Sharpe that earns at least that. ${free}`;
-    }
+  // placeholders show the benchmark defaults in use
+  const p1 = (v) => (v * 100).toFixed(1);
+  if (state.objective === 'maxSharpe' && res.auto) {
+    $('sharpeMaxVol').placeholder = res.auto.fromBench ? `${bl}: ${p1(res.auto.maxVol)}` : 'no cap';
+    $('sharpeMinRet').placeholder = res.auto.fromBench ? `${bl} CAGR + 1: ${p1(res.auto.minRet)}` : 'no floor';
+  }
+  if (res.auto && res.auto.metric) {
+    $('target').placeholder = res.auto.fromBench ? `${bl}${res.auto.metric === 'vol' ? '' : ' CAGR'}: ${p1(res.auto.target)}` : '';
+  }
+  if (res.bl) {
+    $('blTable').innerHTML = `<table><thead><tr><th>Sleeve</th><th title="Historical mean">Hist.</th><th title="Equilibrium (implied by the reference mix)">Equil.</th><th title="Black-Litterman blend">Blend</th><th>Weight</th></tr></thead><tbody>`
+      + inc.map((id, k) => `<tr><td>${esc(SHORT[id] || id)}</td><td>${pct(mo.mu[k])}</td><td>${pct(res.bl.prior[k])}</td><td>${pct(res.bl.posterior[k])}</td><td>${pct(chosen.w[k])}</td></tr>`).join('')
+      + '</tbody></table>';
   }
   status(msg ? esc(msg) : '', 'warn');
   $('results').classList.remove('hidden');
 
   // backtest the chosen weights and the benchmark over the same months
   const portR = S.backtest(s.dates, s.matrix, chosen.w, state.rebalance);
+  wfIds = inc;
+  wfSetup({ problem, s, benchR, chosen, bl });
   const pa = chosen.w.reduce((a, w, i) => a + w * ab.alpha[i], 0), pb = chosen.w.reduce((a, w, i) => a + w * ab.beta[i], 0);
   $('abLine').textContent = `Against ${SHORT[state.benchmark] || state.benchmark}: alpha ${pa >= 0 ? '+' : ''}${pct(pa)} a year · beta ${pb.toFixed(2)}`;
   const pm = S.metrics(portR, s.rf), bm = S.metrics(benchR, s.rf);
@@ -383,6 +329,63 @@ function run() {
   };
   redraw();
 }
+
+/* ------------------------------ walk-forward ------------------------------ */
+let wfJob = null;   // inputs captured from the latest run()
+let wfToken = 0;    // bumps whenever settings change, so a running test stops
+
+function wfSetup(job) {
+  wfJob = job;
+  wfToken++;
+  $('wfOut').classList.add('hidden');
+  $('wfBtn').disabled = false;
+  const years = job.s.dates.length / 12, need = Number($('wfTrain').value);
+  $('wfNote').textContent = years < need + 1
+    ? `This window is ${years.toFixed(1)} years long, shorter than the ${need}-year training period plus a year to test. Pick a shorter training period or a longer window.`
+    : 'Not run yet for these settings.';
+}
+
+$('wfTrain').addEventListener('change', () => wfJob && wfSetup(wfJob));
+$('wfBtn').onclick = async () => {
+  if (!wfJob) return;
+  const { problem, s, benchR, chosen, bl } = wfJob;
+  const token = ++wfToken;
+  $('wfBtn').disabled = true;
+  $('wfOut').classList.add('hidden');
+  const gen = walkForward(problem, { dates: s.dates, minTrainMonths: Number($('wfTrain').value) * 12, rebalance: state.rebalance });
+  let step = gen.next();
+  while (!step.done) {
+    $('wfNote').textContent = `Re-optimizing year ${step.value.done} of ${step.value.total}…`;
+    await new Promise((r) => setTimeout(r, 0)); // let the page repaint
+    if (token !== wfToken) return;              // settings changed mid-run
+    step = gen.next();
+  }
+  $('wfBtn').disabled = false;
+  const wf = step.value;
+  if (!wf.steps.length) { $('wfNote').textContent = 'Not enough history for that training period.'; return; }
+
+  // the same out-of-sample months for all three
+  const a = wf.firstIndex, rf = s.rf.slice(a);
+  const inS = S.backtest(s.dates.slice(a), s.matrix.slice(a), chosen.w, state.rebalance);
+  const bR = benchR.slice(a);
+  const rows = [['Walk-forward', wf.returns], ['In-sample weights', inS], [bl, bR]].map(([name, r]) => ({ name, r, m: S.metrics(r, rf) }));
+  const f2 = (v) => (Number.isFinite(v) ? v.toFixed(2) : '—');
+  $('wfTable').innerHTML = '<table><thead><tr><th></th><th>CAGR</th><th>Vol</th><th>Sharpe</th><th>Max DD</th><th>Worst 12M</th></tr></thead><tbody>'
+    + rows.map((x, k) => `<tr class="${k === 0 ? 'port' : ''}"><td>${esc(x.name)}</td><td>${pct(x.m.cagr)}</td><td>${pct(x.m.vol)}</td><td>${f2(x.m.sharpe)}</td><td>${pct(x.m.maxDD)}</td><td>${pct(x.m.worst12)}</td></tr>`).join('')
+    + '</tbody></table>';
+  const colors = ['var(--accent)', 'var(--gold)', 'var(--accent-2)'];
+  const series = rows.map((x, k) => ({ label: x.name, values: S.wealth(x.r, 10000), color: colors[k] }));
+  $('wfLegend').innerHTML = series.map((x) => `<span><i class="lg-line" style="background:${x.color}"></i>${esc(x.label)}</span>`).join('');
+  $('wfOut').classList.remove('hidden');
+  C.growthChart($('wfChart'), wf.dates, series);
+  const gap = rows[1].m.cagr - rows[0].m.cagr;
+  const last = wf.steps.at(-1);
+  const top = last.w.map((w, i) => [SHORT[wfIds[i]] || wfIds[i], w]).filter((x) => x[1] >= 0.005).sort((x, y) => y[1] - x[1]).slice(0, 6);
+  $('wfNote').innerHTML = `Tested on <b>${ym(wf.dates[0])} → ${ym(wf.dates.at(-1))}</b>: ${wf.steps.length} yearly re-optimizations, each using only data up to that December. `
+    + `Hindsight was worth <b>${gap >= 0 ? '+' : ''}${pct(gap)} a year</b> (in-sample weights ${pct(rows[1].m.cagr)} vs walk-forward ${pct(rows[0].m.cagr)}). `
+    + `Average turnover ${pct(turnover(wf.steps), 0)} a year. Latest weights (from ${ym(last.trainEnd)}): ${top.map(([n, w]) => `${esc(n)} ${pct(w, 0)}`).join(', ')}.`;
+};
+let wfIds = [];
 
 /* ------------------------------- renderers ------------------------------- */
 function renderHistory(win, s, inc) {
