@@ -23,7 +23,7 @@ modules. Installable as a PWA, and it works offline once loaded.
   can't all be met are explained. *My own weights* ignores them but flags any class that's out
   of range.
   **↺ Reset limits** puts every sleeve back to 0–100% of the portfolio, class limits to 0–100%, and
-  clears your own weights (ticked sleeves, objective and window stay).
+  clears your own weights (ticked sleeves, objective and window stay). **↶ Undo reset** puts them back.
   Presets: *All*, *US to 1926* (the five US style sleeves plus cash, 100 years of history) and *None*.
 - **Limits as a share of the class.** Each sleeve's min/max can be set as **% of the portfolio**
   or **% of its own class**, from the selector under the sleeve's name. Examples: US Large
@@ -76,6 +76,14 @@ modules. Installable as a PWA, and it works offline once loaded.
     and the number of years ahead of the benchmark.
   - **Charts:** growth of $10,000 (log scale) and drawdowns.
   - **Rebalancing:** annual, quarterly, monthly or never.
+- **Walk-forward test (out of sample).** Every December it re-runs your objective and limits using
+  only the data up to that point (an expanding window, after a first training period of 5–20
+  years), holds those weights for the next calendar year, and repeats.
+  - It reports the stitched result next to the in-sample weights and the benchmark over the same
+    tested months.
+  - It also shows how much a year hindsight was worth, the average turnover, and the latest weights.
+  - Benchmark-based defaults (the Max Sharpe floor, the targets) are recomputed from each
+    training window too.
 - **Calendar years.** Portfolio minus benchmark for every year in the window, plus a
   year-by-year table. The current year shows as YTD.
 - **Benchmarks.** Seven built-in comparisons:
@@ -95,19 +103,17 @@ Returns are monthly decimal total returns from `data/processed/optimizer_returns
 
 - **Expected return** = historical arithmetic mean × 12. **Risk** = sample covariance × 12.
   Sharpe ratios are measured against the 1-month T-bill (the Cash sleeve) over the same months.
-- **Frontier:** sweeps a risk-aversion parameter `γ` through `min wᵀΣw − γ·μ·w`, solved by
-  accelerated projected gradient descent (FISTA).
-  - The projection onto `{Σw = 1, loᵢ ≤ wᵢ ≤ hiᵢ}` is exact: `wᵢ = clip(vᵢ − τ, loᵢ, hiᵢ)`, with `τ`
-    found by bisection.
-  - Asset-class limits add one shift per class: `wᵢ = clip(vᵢ − τ − σ_g, loᵢ, hiᵢ)`, where `σ_g` is
-    zero unless the class total would break its limit. The classes don't overlap, so each settles
-    independently for a given `τ`, and the projection stays exact.
-  - A share-of-class limit (`loᵣ·Σ_g w ≤ wᵢ ≤ hiᵣ·Σ_g w`) ties a sleeve to its whole class, so the
-    shortcut projection above no longer applies on its own. With any of these limits on, the
-    optimizer switches to **ADMM** in the OSQP form (Stellato et al., 2020): every limit is a row
-    of `l ≤ Aw ≤ u`, one small matrix is factored once, and each solve takes a few milliseconds.
-    Dykstra's algorithm gives the exact nearest point where one is needed (equal weight), and the
-    max-return end comes from projecting a point far out along `μ`.
+- **Frontier:** sweeps a risk-aversion parameter `γ` through `min wᵀΣw − γ·μ·w`. Each point is a
+  small quadratic program solved by **ADMM** in the OSQP form (Stellato et al., 2020).
+  - Every limit is a row of `l ≤ Aw ≤ u`: fully invested, sleeve limits, asset-class limits, and
+    share-of-class limits (`loᵣ·Σ_g w ≤ wᵢ ≤ hiᵣ·Σ_g w`, which are linear).
+  - One small matrix is factored once per run, and each solve takes a few milliseconds. It stays
+    fast when sleeves move almost identically (US Market and Research I&G), where the earlier
+    projected-gradient solver needed thousands of iterations. That solver is kept for a test
+    that the two agree.
+  - Exact projections are still used where a nearest point is needed on its own (equal weight):
+    `wᵢ = clip(vᵢ − τ − σ_g, loᵢ, hiᵢ)` for sleeve and class limits, plus Dykstra's algorithm for
+    share-of-class limits.
   - The max-return end is solved exactly: each class is brought up to its minimum with its best
     sleeves, then the rest goes to the best sleeves within the sleeve and class maximums.
 - **Max Sharpe:** the best Sharpe on the frontier, refined by golden-section search on `γ`.
@@ -132,7 +138,8 @@ their launch dates and research proxies before:
 - **Commodities:** HGER from 2022. Before that, AQR's long-run commodity-futures index plus
   T-bills plus HGER's premium over it.
 - **Trend:** AQMIX from 2010. Before that, AQR's time-series momentum factor, less 2% a year.
-- **Equity long/short:** QLEIX from 2013. Before that, French's value + momentum factors.
+- **Hedge strategy:** MBXIX (Catalyst/Millburn Hedge Strategy) from 2016. Before that, French's
+  value + momentum factors.
 
 All sleeves stop at French's latest month, so they share one end date.
 
@@ -150,7 +157,8 @@ The app loads the data network-first, so the next visit picks up the new numbers
 
 ```bash
 npm start          # serves at http://localhost:8080 (any static server works)
-npm test           # optimizer + stats tests (node --test)
+npm test           # app math: optimizer, objectives, walk-forward, stats (node --test)
+npm run test:py    # data pipeline: parsing, bonds, splices (python unittest)
 ```
 
 ## Deploying
@@ -166,7 +174,8 @@ publishes it. Any static host works too, with no build command and `/` as the pu
 | `css/styles.css` | Styling, dark and light themes, responsive |
 | `js/data.js` | Loads the return bundle, sleeve coverage, common windows, slicing |
 | `js/stats.js` | Metrics, calendar years, backtest, correlations (pure functions) |
-| `js/optimize.js` | Moments, projection, frontier, max Sharpe, targets, risk contributions (pure functions) |
+| `js/optimize.js` | Moments, projection, ADMM solver, frontier, max Sharpe, targets, alpha/beta, Black-Litterman (pure functions) |
+| `js/objectives.js` | Turns history + settings into a portfolio for each objective; the walk-forward test (pure functions) |
 | `js/charts.js` | Inline-SVG charts: frontier, growth, drawdowns, year bars, heatmap |
 | `js/app.js` | State, rendering, interactions, persistence |
 | `manifest.webmanifest`, `sw.js`, `icons/` | PWA install and offline support |
@@ -177,17 +186,17 @@ publishes it. Any static host works too, with no build command and `/` as the pu
 
 - **The backtest is in-sample.** Weights are chosen on the same window they're tested on, so
   optimized portfolios look better than anyone could have done in real time. Max Sharpe in
-  particular concentrates in whatever did best in the window.
+  particular concentrates in whatever did best in the window. **Run the walk-forward test** to
+  see what the same rule earned without hindsight.
 - **These are paper portfolios.** No fees, trading costs, taxes or cash drag.
 - **Treasury returns are rebuilt from yields**, so they are close to, not identical to, index
   returns. They are within about 1–2 points a year of published figures, with larger gaps in
   years of big rate moves.
-- **The alternatives join real funds to research proxies.** Commodities, Trend and Equity long/short
-  use real funds (HGER from 2022, AQMIX from 2010, QLEIX from 2013) after their launch dates and
+- **The alternatives join real funds to research proxies.** Commodities, Trend and Hedge strategy
+  use real funds (HGER from 2022, AQMIX from 2010, MBXIX from 2016) after their launch dates and
   research proxies before. Proxy months are paper returns, with a 3.4%/yr premium added to
-  commodities and a 2%/yr fee taken from trend. QLEIX in particular is a different strategy from
-  its value + momentum proxy (correlation 0.20), so that sleeve's history before 2013 is a
-  different animal.
+  commodities and a 2%/yr fee taken from trend. MBXIX is unrelated to its value + momentum
+  proxy (correlation 0.03), so that sleeve's history before 2016 is a different strategy.
 - **Commodities join two sources.** AQR's paper index runs through May 2025, and HGER's
   actual net-of-fee returns follow. They correlated 0.86 where both exist, but they follow
   different index rules.

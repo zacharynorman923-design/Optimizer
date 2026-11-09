@@ -9,7 +9,8 @@
 
    The frontier is traced by sweeping a risk-aversion parameter γ through
        min  wᵀΣw − γ·(μ·w)
-   solved by accelerated projected gradient descent (FISTA). Projection onto
+   Each point is solved by ADMM (see below); a projected-gradient solver (FISTA)
+   is kept as a cross-check (context(..., solver = 'pg')). Projection onto
    the feasible set is exact: w_i = clip(v_i − τ − σ_g, lo_i, hi_i), with a
    class shift σ_g that is zero unless the class total would break its limit
    (then it puts the total on that limit), and τ found by bisection so the
@@ -18,8 +19,8 @@
 
    Limits relative to a class ("Large Value ≤ 30% of Equity") are linear but
    couple a sleeve to its whole class:  lo_r·Σ_g w ≤ w_i ≤ hi_r·Σ_g w. Each is a
-   halfspace a·w ≤ 0 through the origin. With any of those present the solver
-   switches to ADMM in the OSQP form (Stellato et al. 2020): every limit becomes
+   halfspace a·w ≤ 0 through the origin. The solver is ADMM in the OSQP form
+   (Stellato et al. 2020), used for every case: every limit becomes
    a row of l ≤ Aw ≤ u, one small matrix is factored once, and each iteration is
    a couple of multiplications. projectAll (Dykstra's algorithm) gives the exact
    nearest point when one is needed on its own (e.g. equal weight).
@@ -342,11 +343,14 @@ export function maxReturnAll(ctx) {
 }
 
 /* Everything the solvers share for one set of inputs. */
-export function context(mu, cov, rf, lo, hi, groups = [], rel = [], extra = [], pScale = 1) {
+export function context(mu, cov, rf, lo, hi, groups = [], rel = [], extra = [], pScale = 1, solver = 'admm') {
   const L = 2 * maxEigen(cov) || 1;
   const scale = cov.reduce((s, row, i) => s + row[i], 0) / mu.length / (mean(mu.map(Math.abs)) || 1);
   const halves = relativeHalfspaces(rel, mu.length);
-  const qp = halves.length || extra.length ? buildQP(cov, lo, hi, groups, halves, extra, pScale) : null;
+  // ADMM handles every case, and stays fast when sleeves are nearly collinear (the projected-
+  // gradient path below needed thousands of iterations there). `solver: 'pg'` keeps the old path
+  // available for comparison in tests.
+  const qp = solver === 'pg' && !halves.length && !extra.length ? null : buildQP(cov, lo, hi, groups, halves, extra, pScale);
   return { mu, cov, rf, lo, hi, groups, halves, qp, step: 1 / L, gMin: scale * 1e-4, gMax: scale * 1e4 };
 }
 

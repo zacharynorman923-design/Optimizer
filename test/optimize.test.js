@@ -296,3 +296,14 @@ test('Black-Litterman works when two sleeves move in lockstep (singular covarian
   const r = O.blackLitterman({ cov: c2, mu: [0.10, 0.11, 0.06], rf: 0.02, wRef: [0.6, 0, 0.4], confidence: 0.5 });
   assert.ok(r.posterior.every(Number.isFinite));
 });
+
+test('the ADMM and projected-gradient solvers agree', () => {
+  const lo3 = [0.05, 0, 0], hi3 = [0.7, 1, 0.6];
+  const a = O.context(mu, cov, rf, lo3, hi3), b = O.context(mu, cov, rf, lo3, hi3, [], [], [], 1, 'pg');
+  assert.ok(a.qp && !b.qp);
+  for (const g of [0, a.gMin * 50, a.gMax / 50]) {
+    const wa = O.solve(a, g), wb = O.solve(b, g);
+    wa.forEach((x, i) => near(x, wb[i], 1e-6));
+  }
+  near(O.maxSharpe(a, O.frontier(a)).sharpe, O.maxSharpe(b, O.frontier(b)).sharpe, 1e-7);
+});

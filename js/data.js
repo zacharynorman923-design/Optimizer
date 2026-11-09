@@ -73,7 +73,7 @@ export const SHORT = {
   US_SmallWeak: 'US S Weak', DevExUS_SmallValue: 'Dev SV', DevExUS_LargeValue: 'Dev LV',
   DevExUS_Market: 'Dev Mkt', EM_SmallValue: 'EM SV', EM_LargeValue: 'EM LV',
   EM_Market: 'EM Mkt', Cash: 'Cash',
-  UST_1Y: 'UST 1Y', UST_5Y: 'UST 5Y', UST_10Y: 'UST 10Y', Commodities: 'Cmdty', Trend: 'Trend', Equity_LS: 'Eq L/S',
+  UST_1Y: 'UST 1Y', UST_5Y: 'UST 5Y', UST_10Y: 'UST 10Y', Commodities: 'Cmdty', Trend: 'Trend', Equity_LS: 'Hedge',
   BM_FI100: 'FI 100', BM_20_80: '20/80', BM_40_60: '40/60', BM_60_40: '60/40', BM_80_20: '80/20',
   BM_EQ100: 'US 100', BM_World: 'World',
 };

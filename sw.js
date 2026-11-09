@@ -1,8 +1,9 @@
-/* Optimizer service worker — offline app shell + return data.
-   Bump VERSION on every release so clients discard the old cached shell. */
-const VERSION = 'optimizer-v22';
-const SHELL = `${VERSION}-shell`;
-const RUNTIME = `${VERSION}-runtime`;
+/* Optimizer service worker — offline copy of the app and its return data.
+   There is no version number here: everything is fetched network-first and the cached copy is
+   refreshed on every successful fetch, so the cache never needs a new name. The app's version
+   lives in js/app.js (APP_VERSION). */
+const SHELL = 'optimizer-shell';
+const RUNTIME = 'optimizer-fonts';
 
 /* Paths are relative to the SW scope (this folder). */
 const SHELL_ASSETS = [
@@ -13,6 +14,7 @@ const SHELL_ASSETS = [
   './js/data.js',
   './js/stats.js',
   './js/optimize.js',
+  './js/objectives.js',
   './js/charts.js',
   './manifest.webmanifest',
   './icons/icon.svg',
@@ -33,7 +35,7 @@ self.addEventListener('install', (event) => {
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((keys) =>
-      Promise.all(keys.filter((k) => !k.startsWith(VERSION)).map((k) => caches.delete(k)))
+      Promise.all(keys.filter((k) => k !== SHELL && k !== RUNTIME).map((k) => caches.delete(k)))
     ).then(() => self.clients.claim())
   );
 });

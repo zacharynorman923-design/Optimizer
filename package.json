@@ -6,6 +6,7 @@
   "type": "module",
   "scripts": {
     "test": "node --no-warnings --test test/*.test.js",
+    "test:py": "python3 -m unittest discover -s test -p \"test_*.py\"",
     "start": "python3 -m http.server 8080"
   }
 }

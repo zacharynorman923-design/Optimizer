@@ -67,7 +67,7 @@ TSMOM_URL = ("https://www.aqr.com/-/media/AQR/Documents/Insights/Data-Sets/"
 #   Commodities: HGER (Harbor Commodity All-Weather Strategy ETF) after AQR's long-run index + RF
 #                + HGER's average monthly premium over that index while both existed
 #   Trend:       AQMIX (AQR Managed Futures Strategy Fund I) after AQR's TSMOM factor + RF - fee
-#   Equity_LS:   QLEIX (AQR Long-Short Equity Fund I) after 50% HML + 50% Mom + RF
+#   Equity_LS:   MBXIX (Catalyst/Millburn Hedge Strategy Fund I) after 50% HML + 50% Mom + RF
 # Research Income & Growth = US market + this much a year (added as 1/12 each month).
 RESEARCH_IG_PREMIUM = 0.01
 
@@ -76,7 +76,7 @@ RESEARCH_IG_PREMIUM = 0.01
 TREND_FACTOR_FEE = 0.02
 AQMIX_URL = ("https://query1.finance.yahoo.com/v8/finance/chart/AQMIX"
              "?period1=1230768000&period2={now}&interval=1d&events=div%7CcapitalGain")
-QLEIX_URL = ("https://query1.finance.yahoo.com/v8/finance/chart/QLEIX"
+MBXIX_URL = ("https://query1.finance.yahoo.com/v8/finance/chart/MBXIX"
              "?period1=0&period2={now}&interval=1d&events=div%7CcapitalGain")
 HGER_URL = ("https://query1.finance.yahoo.com/v8/finance/chart/HGER"
             "?period1=1640995200&period2={now}&interval=1d&events=div")
@@ -119,8 +119,8 @@ SLEEVES = [
      "HGER total return from its first month; before that AQR equal-weight excess return + RF + HGER's premium"),
     ("Trend", "Trend-following (AQR TSMOM)", "Global", "Systematic Trend", "tsmom",
      "AQMIX total return from its first month; before that AQR TSMOM factor excess return + RF - 2%/yr fee"),
-    ("Equity_LS", "Equity long/short (QLEIX; value + momentum before)", "US", "Equity Market Neutral", "mom",
-     "QLEIX total return from its first month; before that 50% HML + 50% Mom (French) + RF"),
+    ("Equity_LS", "Hedge strategy (MBXIX; value + momentum before)", "US", "Alternative (hedge strategy)", "mom",
+     "MBXIX total return from its first month; before that 50% HML + 50% Mom (French) + RF"),
 ]
 
 # Asset class for the app's class limits (Equity / Fixed income / Alts).
@@ -582,7 +582,7 @@ def read_aqr(path: Path) -> pd.Series:
 
 def read_yahoo_monthly(path: Path) -> pd.Series:
     """Monthly total returns from Yahoo daily data: last dividend-adjusted close of each month
-    (complete months only). Used for HGER, AQMIX and QLEIX."""
+    (complete months only). Used for HGER, AQMIX and MBXIX."""
     res = json.loads(path.read_text())["chart"]["result"][0]
     gmt = res.get("meta", {}).get("gmtoffset", 0)  # exchange-local dates, not UTC
     ts = pd.to_datetime(np.asarray(res["timestamp"]) + gmt, unit="s")
@@ -681,7 +681,7 @@ def read_tsmom(path: Path) -> pd.DataFrame:
 
 def build_hedge_proxies(csvs: dict[str, Path], ff3_m: pd.DataFrame, skip: bool) -> tuple[dict, dict, list[dict]]:
     """Trend = AQMIX from its first month, before that AQR TSMOM + RF - fee (1985+).
-    Equity_LS = QLEIX from its first month, before that 50% HML + 50% Mom + RF (1927+)."""
+    Equity_LS = MBXIX from its first month, before that 50% HML + 50% Mom + RF (1927+)."""
     rf = ff3_m["RF"]
     tsmom_path = _download(TSMOM_URL, AQR_DIR / "Time-Series-Momentum-Factors-Monthly.xlsx", skip,
                            lambda b: b.startswith(b"PK"))
@@ -691,18 +691,18 @@ def build_hedge_proxies(csvs: dict[str, Path], ff3_m: pd.DataFrame, skip: bool) 
     factor = (tsmom["TSMOM"] + rf - TREND_FACTOR_FEE / 12).dropna()
     ls_proxy = (0.5 * ff3_m["HML"] + 0.5 * mom + rf).dropna()
     aqmix, aqmix_path = fetch_fund(AQMIX_URL, "AQMIX", skip)
-    qleix, qleix_path = fetch_fund(QLEIX_URL, "QLEIX", skip)
+    mbxix, mbxix_path = fetch_fund(MBXIX_URL, "MBXIX", skip)
     tables = {"Trend": splice_fund(factor, aqmix, "AQR TSMOM + RF - fee", "AQMIX"),
-              "Equity_LS": splice_fund(ls_proxy, qleix, "HML + Mom + RF", "QLEIX")}
+              "Equity_LS": splice_fund(ls_proxy, mbxix, "HML + Mom + RF", "MBXIX")}
     out = {k: t["return"] for k, t in tables.items()}
     for k, t in tables.items():
-        f = t[t.source.isin(["AQMIX", "QLEIX"])]
+        f = t[t.source.isin(["AQMIX", "MBXIX"])]
         log(f"  {k}: {t.index[0]:%Y-%m} to {t.index[-1]:%Y-%m}, fund from "
             f"{f.index[0]:%Y-%m}" if len(f) else f"  {k}: proxy only")
     cuts = [{"file": "AQR Time Series Momentum: Factors, Monthly", "csv": tsmom_path.name,
              "first_line": f"data through {factor.index[-1]:%Y-%m}", "data_cut": f"{factor.index[-1]:%Y%m}",
              "processed_at": dt.datetime.now().isoformat(timespec="seconds")},
-            fund_cut("AQMIX (Yahoo Finance)", aqmix_path, aqmix), fund_cut("QLEIX (Yahoo Finance)", qleix_path, qleix)]
+            fund_cut("AQMIX (Yahoo Finance)", aqmix_path, aqmix), fund_cut("MBXIX (Yahoo Finance)", mbxix_path, mbxix)]
     return out, tables, cuts
 
 
@@ -1100,7 +1100,7 @@ def main() -> int:
     sheets["Benchmarks_Calendar"] = calendar_years(bm)
     sheets["Benchmark_Checks"] = benchmark_checks(bm, args.skip_download)
     sheets["Trend_Splice"] = splice_check(proxy_tables["Trend"], label="factor / AQMIX")
-    sheets["EquityLS_Splice"] = splice_check(proxy_tables["Equity_LS"], label="HML+Mom / QLEIX")
+    sheets["EquityLS_Splice"] = splice_check(proxy_tables["Equity_LS"], label="HML+Mom / MBXIX")
 
     d = dfat(x["ff5"])
     if d:
