@@ -19,7 +19,7 @@ const ym = (iso) => iso.slice(0, 7);
 const KEY = 'optimizer-state-v1', THEME_KEY = 'optimizer-theme';
 // The app's one version number, shown in the data line so it's easy to tell which version a
 // phone is running. (sw.js no longer carries a version of its own.)
-const APP_VERSION = 'v23';
+const APP_VERSION = 'v24';
 const US_1926 = ['US_LargeCap', 'US_SmallValue', 'US_SmallGrowth', 'US_LargeValue', 'US_LargeGrowth', 'Cash'];
 const CLASSES = ['Equity', 'Fixed income', 'Alts'];
 const OBJECTIVES = {
