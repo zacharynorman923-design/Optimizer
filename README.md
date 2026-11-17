@@ -138,8 +138,8 @@ their launch dates and research proxies before:
 - **Commodities:** HGER from 2022. Before that, AQR's long-run commodity-futures index plus
   T-bills plus HGER's premium over it.
 - **Trend:** AQMIX from 2010. Before that, AQR's time-series momentum factor, less 2% a year.
-- **Hedge strategy:** MBXIX (Catalyst/Millburn Hedge Strategy) from 2016. Before that, French's
-  value + momentum factors.
+- **Equity market neutral:** BDMIX (BlackRock Global Equity Market Neutral) from 2013. Before
+  that, French's value + momentum factors.
 
 All sleeves stop at French's latest month, so they share one end date.
 
@@ -192,11 +192,12 @@ publishes it. Any static host works too, with no build command and `/` as the pu
 - **Treasury returns are rebuilt from yields**, so they are close to, not identical to, index
   returns. They are within about 1–2 points a year of published figures, with larger gaps in
   years of big rate moves.
-- **The alternatives join real funds to research proxies.** Commodities, Trend and Hedge strategy
-  use real funds (HGER from 2022, AQMIX from 2010, MBXIX from 2016) after their launch dates and
-  research proxies before. Proxy months are paper returns, with a 3.4%/yr premium added to
-  commodities and a 2%/yr fee taken from trend. MBXIX is unrelated to its value + momentum
-  proxy (correlation 0.03), so that sleeve's history before 2016 is a different strategy.
+- **The alternatives join real funds to research proxies.** Commodities, Trend and Equity market
+  neutral use real funds (HGER from 2022, AQMIX from 2010, BDMIX from 2013) after their launch
+  dates and research proxies before. Proxy months are paper returns, with a 3.4%/yr premium added
+  to commodities and a 2%/yr fee taken from trend. BDMIX is market-neutral like its value +
+  momentum proxy but doesn't move with it month to month (correlation 0.05), so that sleeve's
+  history before 2013 is a different strategy.
 - **Commodities join two sources.** AQR's paper index runs through May 2025, and HGER's
   actual net-of-fee returns follow. They correlated 0.86 where both exist, but they follow
   different index rules.
