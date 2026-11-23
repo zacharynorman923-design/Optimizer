@@ -307,3 +307,15 @@ test('the ADMM and projected-gradient solvers agree', () => {
   }
   near(O.maxSharpe(a, O.frontier(a)).sharpe, O.maxSharpe(b, O.frontier(b)).sharpe, 1e-7);
 });
+
+test('share-of-large-cap limit spans sleeves in a different set than the class', () => {
+  // 0,1 large cap; 2 small cap (same class); 3 bonds. Sleeve 0 ≤ 25% of large cap, large cap ≥ 40% of portfolio.
+  const mu = [0.010, 0.006, 0.007, 0.003];
+  const cov = [[0.002, 0.001, 0.001, 0], [0.001, 0.002, 0.001, 0], [0.001, 0.001, 0.003, 0], [0, 0, 0, 0.0004]];
+  const rel = [{ i: 0, group: 'large cap', members: [0, 1], lo: 0, hi: 0.25 }];
+  const groups = [{ name: 'Equity', members: [0, 1, 2], lo: 0, hi: 1 }];
+  assert.equal(O.boundsError([0, 0, 0, 0], [1, 1, 1, 1], groups, rel), null);
+  const ctx = O.context(mu, cov, 0, [0, 0, 0, 0], [1, 1, 1, 1], groups, rel);
+  const w = O.maxReturnAll(ctx);
+  assert.ok(w[0] <= 0.25 * (w[0] + w[1]) + 1e-6, `share ${w[0] / (w[0] + w[1])}`);
+});

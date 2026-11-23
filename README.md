@@ -29,6 +29,9 @@ modules. Installable as a PWA, and it works offline once loaded.
   or **% of its own class**, from the selector under the sleeve's name. Examples: US Large
   Value 10–30% *of equity*, 5-year Treasury at least 40% *of fixed income*, Commodities at most
   50% *of alts*. The weight column then also shows the sleeve's current share of its class.
+  Large-cap sleeves (US Market, Research I&G, US Large Value/Growth, Developed Large Value,
+  Developed Market, EM Large Value, EM Market) also offer **% of large cap**: a share of
+  whichever of those sleeves are ticked, for example US Large Growth at most 25% *of large cap*.
   Conflicting shares are explained, for example minimum shares adding up to more than 100% of
   the class.
 - **All the history there is.** The window defaults to the longest stretch every ticked sleeve
