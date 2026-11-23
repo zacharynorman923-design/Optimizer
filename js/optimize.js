@@ -90,7 +90,7 @@ export function boundsError(lo, hi, groups = [], rel = [], names = []) {
   const halves = relativeHalfspaces(rel, lo.length);
   const w = projectAll(lo.map(() => 1 / lo.length), lo, hi, groups, halves);
   const worst = Math.max(0, ...halves.map((h) => dot(h.a, w)));
-  if (worst > 1e-6) return 'the share-of-class / share-of-large-cap limits conflict with the other limits';
+  if (worst > 1e-6) return 'the share-of-class / share-of-US-large-cap limits conflict with the other limits';
   return null;
 }
 
