@@ -19,7 +19,7 @@ const ym = (iso) => iso.slice(0, 7);
 const KEY = 'optimizer-state-v1', THEME_KEY = 'optimizer-theme';
 // The app's one version number, shown in the data line so it's easy to tell which version a
 // phone is running. (sw.js no longer carries a version of its own.)
-const APP_VERSION = 'v24';
+const APP_VERSION = 'v25';
 const US_1926 = ['US_LargeCap', 'US_SmallValue', 'US_SmallGrowth', 'US_LargeValue', 'US_LargeGrowth', 'Cash'];
 const CLASSES = ['Equity', 'Fixed income', 'Alts'];
 const OBJECTIVES = {
@@ -88,7 +88,11 @@ $('classes').addEventListener('input', (e) => {
   update(250);
 });
 
-const relMode = (id) => state.limitOf[id] === 'class';
+// A sleeve's min/max can be a share of its asset class or, for the US large-cap sleeves,
+// a share of the US large-cap sleeves that are ticked (US Market, Research I&G, US LV, US LG).
+const LARGE_CAP = new Set(['US_LargeCap', 'Research_IG', 'US_LargeValue', 'US_LargeGrowth']);
+const relOf = (id) => (state.limitOf[id] === 'large' && LARGE_CAP.has(id) ? 'large' : state.limitOf[id] === 'class' ? 'class' : null);
+const relMode = (id) => relOf(id) !== null;
 const CLASS_SHORT = { Equity: 'Eq', 'Fixed income': 'FI', Alts: 'Alts' };
 
 function sleeveRow(s) {
@@ -98,7 +102,9 @@ function sleeveRow(s) {
     <div class="s-name">${esc(s.name)}<span class="s-meta">from ${ym(s.start_date)} · ${esc(s.morningstar_category)}</span>
       <label class="s-mode">% of <select class="mode" aria-label="Min and max are a percent of">
         <option value="port"${relMode(s.sleeve) ? '' : ' selected'}>portfolio</option>
-        <option value="class"${relMode(s.sleeve) ? ' selected' : ''}>${esc({ Equity: 'equity', 'Fixed income': 'fixed inc.', Alts: 'alts' }[classOf(s)])}</option></select></label></div>
+        <option value="class"${relOf(s.sleeve) === 'class' ? ' selected' : ''}>${esc({ Equity: 'equity', 'Fixed income': 'fixed inc.', Alts: 'alts' }[classOf(s)])}</option>${
+  LARGE_CAP.has(s.sleeve) ? `
+        <option value="large"${relOf(s.sleeve) === 'large' ? ' selected' : ''}>US large cap</option>` : ''}</select></label></div>
     <input class="num-in lo" type="number" inputmode="decimal" min="0" max="100" step="1" value="${bound(state.lo, s.sleeve, 0)}" aria-label="Minimum %" ${on ? '' : 'disabled'}>
     <input class="num-in hi" type="number" inputmode="decimal" min="0" max="100" step="1" value="${bound(state.hi, s.sleeve, 100)}" aria-label="Maximum %" ${on ? '' : 'disabled'}>
     <div class="s-w"></div>
@@ -109,7 +115,7 @@ $('sleeves').addEventListener('change', (e) => {
   const row = e.target.closest('.sleeve'); if (!row) return;
   const id = row.dataset.id;
   if (e.target.classList.contains('mode')) {
-    if (e.target.value === 'class') state.limitOf[id] = 'class'; else delete state.limitOf[id];
+    if (e.target.value === 'class' || e.target.value === 'large') state.limitOf[id] = e.target.value; else delete state.limitOf[id];
   }
   if (e.target.type === 'checkbox') {
     state.include[id] = e.target.checked;
@@ -261,8 +267,9 @@ function run() {
     lo: bound(state.classLo, c, 0) / 100,
     hi: bound(state.classHi, c, 100) / 100,
   }));
+  const large = { name: 'US large cap', members: inc.map((id, i) => [id, i]).filter(([id]) => LARGE_CAP.has(id)).map(([, i]) => i) };
   const rel = inc.map((id, i) => [id, i]).filter(([id]) => relMode(id)).map(([id, i]) => {
-    const g = groups.find((x) => x.members.includes(i));
+    const g = relOf(id) === 'large' ? large : groups.find((x) => x.members.includes(i));
     return { i, group: g.name, members: g.members, lo: bound(state.lo, id, 0) / 100, hi: bound(state.hi, id, 100) / 100 };
   });
   const bad = O.boundsError(lo, hi, groups, rel, inc.map((id) => SHORT[id] || id));
@@ -432,9 +439,11 @@ function renderWeights(inc, chosen, ctx) {
     } else if (i < 0) {
       cell.textContent = '';
     } else if (relMode(row.dataset.id)) {
+      const lc = relOf(row.dataset.id) === 'large';
       const c = classOf(sleeves.find((x) => x.sleeve === row.dataset.id));
-      const tot = inc.reduce((a, id, j) => a + (classOf(sleeves.find((x) => x.sleeve === id)) === c ? chosen.w[j] : 0), 0);
-      cell.innerHTML = `${pct(chosen.w[i], 0)}<small>${tot > 1e-9 ? pct(chosen.w[i] / tot, 0) : '—'} of ${CLASS_SHORT[c]}</small>`;
+      const inGroup = (id) => (lc ? LARGE_CAP.has(id) : classOf(sleeves.find((x) => x.sleeve === id)) === c);
+      const tot = inc.reduce((a, id, j) => a + (inGroup(id) ? chosen.w[j] : 0), 0);
+      cell.innerHTML = `${pct(chosen.w[i], 0)}<small>${tot > 1e-9 ? pct(chosen.w[i] / tot, 0) : '—'} of ${lc ? 'US LC' : CLASS_SHORT[c]}</small>`;
     } else {
       cell.textContent = pct(chosen.w[i], 0);
     }
